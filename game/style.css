@@ -94,6 +94,22 @@ body {
   color: #ff6b6b;
 }
 
+.log-kill {
+  color: #7ee88a;
+}
+
+.log-alert {
+  color: #ffe067;
+}
+
+.log-flee {
+  color: #c9a96e;
+}
+
+.log-dodge {
+  color: #8f9388;
+}
+
 .enemy-common {
   color: #92b17d;
 }

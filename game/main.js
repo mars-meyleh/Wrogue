@@ -26,6 +26,10 @@ let player = {
   def: 0,
   crit: 0,
   dodge: 0,
+  resourceType: "MP",
+  resourceCurrent: 0,
+  resourceMax: 0,
+  inCombat: false,
   gold: 0,
   equipment: {
     head: null,
@@ -109,7 +113,12 @@ function getLogLineClass(message) {
   let plain = message.replace(/<[^>]*>/g, "");
 
   if (/regen \+1 hp|healed|restored/i.test(plain)) return "log-heal";
-  if (/took \d+ damage|you were defeated/i.test(plain)) return "log-damage";
+  if (/strikes you for|ambushes you for|you were defeated/i.test(plain)) return "log-damage";
+  if (/took \d+ damage/i.test(plain)) return "log-damage";
+  if (/critical hit|hit .+ for \d+|hex bolt|cleave|defeated\.|\[\/\]|·→\*/i.test(plain)) return "log-kill";
+  if (/noticed you|is pursuing you|lost your trail/i.test(plain)) return "log-alert";
+  if (/you dodge|dodged .+ambush/i.test(plain)) return "log-dodge";
+  if (/fled wounded/i.test(plain)) return "log-flee";
   if (/looted|opened chest and found/i.test(plain)) return "codex-meta";
   return "codex-note";
 }
@@ -146,6 +155,7 @@ function finishTurn(message, shouldLog = true) {
   }
 
   runEnemyBehaviorTurn();
+  updateCombatState();
 }
 
 function getOpenPosition() {
@@ -197,6 +207,181 @@ function getDistance(aX, aY, bX, bY) {
   return Math.abs(aX - bX) + Math.abs(aY - bY);
 }
 
+function getClassResourceType() {
+  return player.class === "orc" ? "ST" : "MP";
+}
+
+function getClassSkillName() {
+  return player.class === "orc" ? "Rush" : "Hex Bolt";
+}
+
+function initClassResource(resetCurrent = false) {
+  player.resourceType = getClassResourceType();
+  player.resourceMax = 6;
+  if (resetCurrent || !Number.isFinite(player.resourceCurrent)) {
+    player.resourceCurrent = player.resourceMax;
+  } else {
+    player.resourceCurrent = Math.max(0, Math.min(player.resourceCurrent, player.resourceMax));
+  }
+  if (typeof player.inCombat !== "boolean") player.inCombat = false;
+}
+
+function isEnemyCombatState(enemy) {
+  return enemy.state === "ALERT" || enemy.state === "CHASE" || enemy.state === "ATTACK";
+}
+
+function getNearestEnemy(maxRange = 6) {
+  let best = null;
+  let bestDist = Infinity;
+  for (let enemy of entities) {
+    if (!ENEMY_DEFS[enemy.type]) continue;
+    let dist = getDistance(player.x, player.y, enemy.x, enemy.y);
+    if (dist <= maxRange && dist < bestDist) {
+      best = enemy;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+function collectEnemyRewards(enemy, eDef) {
+  entities = entities.filter(en => en !== enemy);
+
+  if (codex.enemies[enemy.type]) codex.enemies[enemy.type].kills++;
+
+  let lootLine = ` ✸ ${eDef.name} defeated.`;
+  let drops = rollEnemyDrops(enemy.type);
+  for (let material of drops) {
+    addMaterialToInventory(material);
+    registerMaterial(material.materialId);
+  }
+
+  if (drops.length) {
+    lootLine += ` Looted ${drops.map(m => renderMaterialSpan(m)).join(", ")}.`;
+  }
+
+  let uniqueDrop = maybeRollUniqueFromEnemy(enemy.type);
+  if (uniqueDrop) {
+    player.inventory.push(uniqueDrop);
+    registerEquipmentSeen(uniqueDrop);
+    lootLine += ` <span class="unique">Unique drop: ${uniqueDrop.name}.</span>`;
+  }
+
+  return lootLine;
+}
+
+function updateCombatState() {
+  if (state !== "DUNGEON") {
+    player.inCombat = false;
+    return;
+  }
+
+  let nowInCombat = entities.some(e => ENEMY_DEFS[e.type] && isEnemyCombatState(e));
+  if (nowInCombat && !player.inCombat) {
+    player.resourceCurrent = player.resourceMax;
+  }
+  player.inCombat = nowInCombat;
+}
+
+function useWitchHexBolt() {
+  let target = getNearestEnemy(5);
+  if (!target) {
+    logAction("No target in range for Hex Bolt.");
+    draw();
+    return true;
+  }
+
+  player.resourceCurrent -= 2;
+  let eDef = ENEMY_DEFS[target.type];
+  let damage = Math.max(2, player.atk + 2 + rand(0, 2));
+  target.hp -= damage;
+
+  let line = `·→* Hex Bolt hits ${eDef.name} for ${damage}.`;
+  if (target.hp <= 0) {
+    line += collectEnemyRewards(target, eDef);
+  } else {
+    target.state = "CHASE";
+    target.alertTurns = 2;
+  }
+
+  finishTurn(line);
+  draw();
+  return true;
+}
+
+function useOrcRush() {
+  let target = getNearestEnemy(6);
+  if (!target) {
+    logAction("No target in range for Rush.");
+    draw();
+    return true;
+  }
+
+  player.resourceCurrent -= 2;
+
+  let dx = target.x - player.x;
+  let dy = target.y - player.y;
+  let stepX = 0;
+  let stepY = 0;
+  if (Math.abs(dx) >= Math.abs(dy)) stepX = dx === 0 ? 0 : dx > 0 ? 1 : -1;
+  else stepY = dy === 0 ? 0 : dy > 0 ? 1 : -1;
+
+  let moved = 0;
+  for (let i = 0; i < 2; i++) {
+    let nx = player.x + stepX;
+    let ny = player.y + stepY;
+
+    if (target.x === nx && target.y === ny) break;
+    if (!isWalkableTile(nx, ny)) break;
+    if (isOccupiedByBlockingEntity(nx, ny)) break;
+
+    player.x = nx;
+    player.y = ny;
+    moved++;
+  }
+
+  let line = `[/] Rush surges ${moved} tile${moved === 1 ? "" : "s"}.`;
+  let dist = getDistance(player.x, player.y, target.x, target.y);
+  if (dist === 1) {
+    let eDef = ENEMY_DEFS[target.type];
+    let damage = Math.max(2, player.atk + 3 + rand(0, 2));
+    target.hp -= damage;
+    line += ` [/] You cleave ${eDef.name} for ${damage}.`;
+
+    if (target.hp <= 0) {
+      line += collectEnemyRewards(target, eDef);
+    } else {
+      target.state = "ATTACK";
+      target.alertTurns = 2;
+    }
+  } else {
+    line += " No hit.";
+  }
+
+  finishTurn(line);
+  draw();
+  return true;
+}
+
+function useClassSkill() {
+  if (state !== "DUNGEON") return false;
+
+  if (!player.inCombat) {
+    logAction(`${getClassSkillName()} can only be used in combat.`);
+    draw();
+    return true;
+  }
+
+  if (player.resourceCurrent < 2) {
+    logAction(`Not enough ${player.resourceType}. Need 2 for ${getClassSkillName()}.`);
+    draw();
+    return true;
+  }
+
+  if (player.class === "orc") return useOrcRush();
+  return useWitchHexBolt();
+}
+
 function isWalkableTile(x, y) {
   if (!map[y] || !map[y][x]) return false;
   if (map[y][x] === "#") return false;
@@ -245,6 +430,22 @@ function tryMoveEnemyToward(enemy, targetX, targetY) {
   return false;
 }
 
+function resolveEnemyAttack(enemy, eDef, events) {
+  if (eDef.behavior?.flees && enemy.hp < enemy.maxHp * 0.5) {
+    enemy.state = "RETURN";
+    events.push(`${eDef.name} fled wounded.`);
+    return false;
+  }
+  if (Math.random() * 100 >= player.dodge) {
+    let taken = Math.max(1, enemy.atk - player.def);
+    player.hp -= taken;
+    events.push(`${eDef.name} strikes you for ${taken}.`);
+    return player.hp <= 0;
+  }
+  events.push(`You dodge ${eDef.name}'s attack.`);
+  return false;
+}
+
 function runEnemyBehaviorTurn() {
   if (state !== "DUNGEON") return;
 
@@ -252,10 +453,13 @@ function runEnemyBehaviorTurn() {
   let alertRange = 4;
   let chaseRange = 2;
   let dropChaseRange = 6;
+  let playerDefeated = false;
 
   for (let enemy of entities) {
+    if (playerDefeated) break;
     if (!ENEMY_DEFS[enemy.type]) continue;
 
+    let eDef = ENEMY_DEFS[enemy.type];
     if (!enemy.state) enemy.state = "IDLE";
     if (enemy.spawnX === undefined || enemy.spawnY === undefined) {
       enemy.spawnX = enemy.x;
@@ -295,18 +499,42 @@ function runEnemyBehaviorTurn() {
         if (enemy.alertTurns <= 0) enemy.state = "RETURN";
       }
     } else if (enemy.state === "CHASE") {
-      if (distToPlayer === 1) {
-        enemy.state = "ATTACK";
-      } else if (distToPlayer > dropChaseRange) {
+      if (distToPlayer > dropChaseRange) {
         enemy.state = "RETURN";
+      } else if (distToPlayer === 1) {
+        enemy.state = "ATTACK";
+        let died = resolveEnemyAttack(enemy, eDef, enemyEvents);
+        if (died) {
+          player.hp = player.maxHp;
+          enterTown("You were defeated and returned to town.");
+          playerDefeated = true;
+        }
       } else {
         tryMoveEnemyToward(enemy, player.x, player.y);
         let postMoveDist = getDistance(enemy.x, enemy.y, player.x, player.y);
-        if (postMoveDist === 1) enemy.state = "ATTACK";
+        if (postMoveDist === 1) {
+          enemy.state = "ATTACK";
+          let died = resolveEnemyAttack(enemy, eDef, enemyEvents);
+          if (died) {
+            player.hp = player.maxHp;
+            enterTown("You were defeated and returned to town.");
+            playerDefeated = true;
+          }
+        }
       }
     } else if (enemy.state === "ATTACK") {
-      if (distToPlayer > dropChaseRange) enemy.state = "RETURN";
-      else enemy.state = "CHASE";
+      if (distToPlayer > dropChaseRange) {
+        enemy.state = "RETURN";
+      } else if (distToPlayer !== 1) {
+        enemy.state = "CHASE";
+      } else {
+        let died = resolveEnemyAttack(enemy, eDef, enemyEvents);
+        if (died) {
+          player.hp = player.maxHp;
+          enterTown("You were defeated and returned to town.");
+          playerDefeated = true;
+        }
+      }
     } else if (enemy.state === "RETURN") {
       let atHome = enemy.x === enemy.spawnX && enemy.y === enemy.spawnY;
       if (!atHome) {
@@ -321,10 +549,11 @@ function runEnemyBehaviorTurn() {
     }
 
     if (previousState !== enemy.state) {
-      let enemyName = ENEMY_DEFS[enemy.type].name;
-      if (enemy.state === "ALERT") enemyEvents.push(`${enemyName} noticed you!`);
-      if (enemy.state === "CHASE") enemyEvents.push(`${enemyName} is pursuing you.`);
-      if (enemy.state === "RETURN") enemyEvents.push(`${enemyName} lost your trail.`);
+      if (enemy.state === "ALERT") enemyEvents.push(`${eDef.name} noticed you!`);
+      if (enemy.state === "CHASE") enemyEvents.push(`${eDef.name} is pursuing you.`);
+      if (enemy.state === "RETURN" && !enemyEvents.some(ev => ev.includes("fled wounded"))) {
+        enemyEvents.push(`${eDef.name} lost your trail.`);
+      }
     }
   }
 
@@ -988,6 +1217,8 @@ function loadGame() {
   }
 
   calculateStats();
+  initClassResource(false);
+  player.inCombat = false;
   player.hp = Math.min(player.hp || player.maxHp, player.maxHp);
   player.inventory = player.inventory.map(item => isMaterial(item) ? normalizeMaterialStack(item) : normalizeGearItem(item));
 
@@ -1000,6 +1231,7 @@ function loadGame() {
 
 function enterTown(message = "Returned to town.") {
   state = "TOWN";
+  player.inCombat = false;
   logAction(message);
   saveGame();
 }
@@ -1039,6 +1271,8 @@ function startGame() {
   }
 
   player.hp = player.maxHp;
+  initClassResource(true);
+  player.inCombat = false;
   calculateStats();
   saveGame();
 }
@@ -1099,6 +1333,7 @@ function generateRoom() {
   });
 
   logAction(`Entered dungeon floor ${dungeon.floor}.`);
+  updateCombatState();
 }
 
 
@@ -1192,6 +1427,7 @@ Kill what you find. Loot what you can. Come back alive.</span>
 <span class="codex-section">-- Key Bindings --</span>
 <span class="codex-note">  Arrows    Move / Navigate inventory
   Enter     Confirm / Equip
+  Q         Class skill (combat only)
   K         Toggle codex
   L         Toggle action log
   Tab       Switch inventory tab / Open inventory
@@ -1408,6 +1644,8 @@ HP: ${player.hp}
 
   output += `\nHP: ${player.hp}/${player.maxHp} | ATK: ${player.atk} | DEF: ${player.def}`;
   output += `\nCRIT: ${player.crit}% | DODGE: ${player.dodge}%`;
+  output += `\n${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax} | Skill[Q]: ${getClassSkillName()} (2 ${player.resourceType})`;
+  output += `\nCombat: ${player.inCombat ? '<span class="log-alert">ENGAGED</span>' : '<span class="codex-meta">idle</span>'}`;
 
   output += `\nFloor: ${dungeon.floor}`;
   output += `\nRooms cleared: ${dungeon.roomsCleared}`;
@@ -1425,6 +1663,7 @@ function drawUI() {
   text += `DEF: ${player.def}\n`;
   text += `CRIT: ${player.crit}%\n`;
   text += `DODGE: ${player.dodge}%\n`;
+  text += `${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax}${player.inCombat ? " [combat]" : " [idle]"}\n`;
   text += `Gold: ${player.gold}\n\n`;
   text += "=== EQUIPMENT ===\n";
 
@@ -1825,6 +2064,11 @@ document.addEventListener("keydown", (e) => {
   // ===== DUNGEON MOVEMENT =====
   if (state !== "DUNGEON") return;
 
+  if (e.key.toLowerCase() === "q") {
+    useClassSkill();
+    return;
+  }
+
   if (e.key.toLowerCase() === "i" || e.key.toLowerCase() === "c") {
     inventoryReturnState = "DUNGEON";
     state = "INVENTORY";
@@ -1895,62 +2139,48 @@ document.addEventListener("keydown", (e) => {
 
       if (ENEMY_DEFS[e.type]) {
         let eDef = ENEMY_DEFS[e.type];
+        let result = "";
+
+        // firstHit: enemy ambushes before player reacts
+        if (e.firstHit) {
+          e.firstHit = false;
+          if (Math.random() * 100 >= player.dodge) {
+            let firstDmg = Math.max(1, e.atk * 2 - player.def);
+            player.hp -= firstDmg;
+            result += `${eDef.name} ambushes you for ${firstDmg}! `;
+          } else {
+            result += `Dodged ${eDef.name}'s ambush! `;
+          }
+          if (player.hp <= 0) {
+            player.hp = player.maxHp;
+            turn++;
+            logAction(result.trim());
+            enterTown("You were defeated and returned to town.");
+            draw();
+            return;
+          }
+        }
+
+        // player attacks
         let critBonus = Math.random() * 100 < player.crit ? 2 : 1;
         let dealt = Math.max(1, player.atk * critBonus);
         e.hp -= dealt;
-        let result = critBonus > 1
-          ? `Critical hit on ${eDef.name} for ${dealt}.`
-          : `Hit ${eDef.name} for ${dealt}.`;
-
-        // counter-attack with behavior checks
-        let flees = eDef.behavior?.flees && e.hp < e.maxHp * 0.5;
-        if (flees) {
-          result += ` ${eDef.name} fled wounded.`;
-        } else if (Math.random() * 100 >= player.dodge) {
-          let counterAtk = e.atk;
-          if (e.firstHit) {
-            counterAtk *= 2;
-            e.firstHit = false;
-            result += ` ${eDef.name} struck first!`;
-          }
-          let taken = Math.max(1, counterAtk - player.def);
-          player.hp -= taken;
-          result += ` Took ${taken} damage.`;
-        } else {
-          if (e.firstHit) e.firstHit = false;
-          result += " Dodged the counterattack.";
-        }
+        result += critBonus > 1
+          ? `[/] Critical hit on ${eDef.name} for ${dealt}.`
+          : `[/] Hit ${eDef.name} for ${dealt}.`;
 
         if (e.hp <= 0) {
-          entities = entities.filter(en => en !== e);
-          result += ` ${eDef.name} defeated.`;
-
-          if (codex.enemies[e.type]) codex.enemies[e.type].kills++;
-
-          let drops = rollEnemyDrops(e.type);
-          for (let material of drops) {
-            addMaterialToInventory(material);
-            registerMaterial(material.materialId);
+          result += collectEnemyRewards(e, eDef);
+        } else {
+          // enemy survives: flee or enter combat state
+          if (eDef.behavior?.flees && e.hp < e.maxHp * 0.5) {
+            e.state = "RETURN";
+            result += ` ${eDef.name} fled wounded.`;
+          } else {
+            e.state = "ATTACK";
+            e.spawnX = e.spawnX ?? e.x;
+            e.spawnY = e.spawnY ?? e.y;
           }
-
-          if (drops.length) {
-            result += ` Looted ${drops.map(m => renderMaterialSpan(m)).join(", ")}.`;
-          }
-
-          let uniqueDrop = maybeRollUniqueFromEnemy(e.type);
-          if (uniqueDrop) {
-            player.inventory.push(uniqueDrop);
-            registerEquipmentSeen(uniqueDrop);
-            result += ` <span class="unique">Unique drop: ${uniqueDrop.name}.</span>`;
-          }
-        }
-
-        if (player.hp <= 0) {
-          player.hp = player.maxHp;
-          turn++;
-          enterTown("You were defeated and returned to town.");
-          draw();
-          return;
         }
 
         finishTurn(result);
