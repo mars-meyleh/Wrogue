@@ -12,6 +12,8 @@ let codexTab = "CREATURES";
 let codexSelection = 0;
 let showActionLog = true;
 let visualFlash = null;
+let atmosphereBanner = "";
+let atmosphereBannerTimeoutId = null;
 let codex = { enemies: {}, materials: {}, equipment: {}, lore: [] };
 
 let dungeon = {
@@ -145,6 +147,67 @@ function getCodexHeaderTitle() {
   return "=== HUNTER'S CODEX ===";
 }
 
+function getClassCombatLabel() {
+  if (player.class === "witch") return "Hex State";
+  if (player.class === "orc") return "War State";
+  return "Combat";
+}
+
+function getClassEquipmentHeader() {
+  if (player.class === "witch") return "=== RITE GEAR ===";
+  if (player.class === "orc") return "=== WAR KIT ===";
+  return "=== EQUIPMENT ===";
+}
+
+function getUniqueStingerLine(source) {
+  if (player.class === "witch") {
+    return source === "chest"
+      ? '<span class="unique-stinger">✦ RELIC STIRS FROM THE CHEST ✦</span>'
+      : '<span class="unique-stinger">✦ RELIC AWAKENED IN BLOOD ✦</span>';
+  }
+
+  if (player.class === "orc") {
+    return source === "chest"
+      ? '<span class="unique-stinger">✦ WAR-RELIC CLAIMED FROM LOOT ✦</span>'
+      : '<span class="unique-stinger">✦ WAR-RELIC TAKEN IN HUNT ✦</span>';
+  }
+
+  return '<span class="unique-stinger">✦ UNIQUE RELIC RECOVERED ✦</span>';
+}
+
+function getClassTransitionText(eventType) {
+  if (player.class === "witch") {
+    if (eventType === "dungeon") return "Sigils settle. Descent logged.";
+    if (eventType === "town") return "Ashroot wards answer. Debrief complete.";
+    if (eventType === "codex") return "Arcane index opened.";
+    return "Arcane thread steady.";
+  }
+
+  if (player.class === "orc") {
+    if (eventType === "dungeon") return "Charter stamped. Hunt resumes.";
+    if (eventType === "town") return "Contract filed. Debrief complete.";
+    if (eventType === "codex") return "Ledger opened.";
+    return "War-log steady.";
+  }
+
+  if (eventType === "dungeon") return "Descent recorded.";
+  if (eventType === "town") return "Town report updated.";
+  if (eventType === "codex") return "Codex opened.";
+  return "Status updated.";
+}
+
+function setAtmosphereBanner(eventType) {
+  atmosphereBanner = getClassTransitionText(eventType);
+  if (atmosphereBannerTimeoutId) {
+    clearTimeout(atmosphereBannerTimeoutId);
+  }
+  atmosphereBannerTimeoutId = setTimeout(() => {
+    atmosphereBanner = "";
+    atmosphereBannerTimeoutId = null;
+    draw();
+  }, 2200);
+}
+
 function getNumberKeyIndex(e) {
   if (!isNaN(e.key)) return parseInt(e.key, 10);
   if (/^Digit[0-9]$/.test(e.code)) return parseInt(e.code.slice(5), 10);
@@ -162,25 +225,12 @@ function getRaritySuffix(rarity) {
   if (rarity === "legendary") return " ✹";
   if (rarity === "epic") return " ✶";
   if (rarity === "rare") return " ✦";
+  if (rarity === "uncommon") return " ◇";
   return " ·";
 }
 
-function getItemStars(item) {
-  if (!item || isMaterial(item)) return 0;
-  if (item.rarity === "unique") return 0;
-  let stars = Number(item.stars);
-  if (!Number.isFinite(stars)) return 3;
-  return Math.max(1, Math.min(5, Math.floor(stars)));
-}
-
-function getStarDisplay(stars) {
-  if (!stars) return "";
-  return ` ${"★".repeat(stars)}`;
-}
-
 function renderItemNameSpan(item) {
-  let stars = getItemStars(item);
-  return `<span class="${item.rarity}">${item.name}${getRaritySuffix(item.rarity)}${getStarDisplay(stars)}</span>`;
+  return `<span class="${item.rarity}">${item.name}${getRaritySuffix(item.rarity)}</span>`;
 }
 
 function renderSpecialEffectLine(item) {
@@ -200,6 +250,7 @@ function getLogLineClass(message) {
   if (/noticed you|is pursuing you|lost your trail/i.test(plain)) return "log-alert";
   if (/you dodge|dodged .+ambush/i.test(plain)) return "log-dodge";
   if (/fled wounded/i.test(plain)) return "log-flee";
+  if (/relic/i.test(plain)) return "log-unique";
   if (/looted|opened chest and found/i.test(plain)) return "codex-meta";
   return "codex-note";
 }
@@ -362,7 +413,8 @@ function collectEnemyRewards(enemy, eDef) {
   if (uniqueDrop) {
     player.inventory.push(uniqueDrop);
     registerEquipmentSeen(uniqueDrop);
-    lootLine += ` <span class="unique">Unique drop: ${uniqueDrop.name}.</span>`;
+    lootLine += `\n${getUniqueStingerLine("enemy")}`;
+    lootLine += `\n<span class="unique">Unique drop: ${uniqueDrop.name}.</span>`;
   }
 
   return lootLine;
@@ -662,27 +714,52 @@ function runEnemyBehaviorTurn() {
   }
 }
 
-const ITEM_GENERATION_POOL = [
-  { type: "weapon", subType: "blade", slot: "mainHand", hands: 1 },
-  { type: "wand", subType: "arcane", slot: "mainHand", hands: 1 },
-  { type: "staff", subType: "focus", slot: "mainHand", hands: 1 },
-  { type: "twoHandWeapon", subType: "heavy", slot: "mainHand", hands: 2 },
-  { type: "shield", subType: "guard", slot: "offHand", hands: 1 },
-  { type: "armor", part: "head", slot: "head", hands: 0 },
-  { type: "armor", part: "chest", slot: "chest", hands: 0 },
-  { type: "armor", part: "belt", slot: "belt", hands: 0 },
-  { type: "armor", part: "legs", slot: "legs", hands: 0 },
-  { type: "armor", part: "boots", slot: "boots", hands: 0 },
-  { type: "accessory", part: "necklace", slot: "necklace", hands: 0 },
-  { type: "accessory", part: "ring", slot: "ring", hands: 0 }
+const BASE_ITEMS = [
+  { id: "dagger", name: "Dagger", type: "weapon", slot: "mainHand", part: null, hands: 1, subType: "blade", atk: 2, def: 0, hp: 0, crit: 1, dodge: 0, codexText: "A short blade favored for quick work in tight corridors." },
+  { id: "sword", name: "Sword", type: "weapon", slot: "mainHand", part: null, hands: 1, subType: "blade", atk: 3, def: 0, hp: 0, crit: 0, dodge: 0, codexText: "A reliable hunter's sidearm with no wasted motion." },
+  { id: "axe", name: "Axe", type: "weapon", slot: "mainHand", part: null, hands: 1, subType: "blade", atk: 4, def: 0, hp: 0, crit: 0, dodge: -1, codexText: "Crude but brutal. Favored when reach matters less than force." },
+  { id: "mace", name: "Mace", type: "weapon", slot: "mainHand", part: null, hands: 1, subType: "blade", atk: 3, def: 1, hp: 0, crit: 0, dodge: 0, codexText: "A weighted head built to break shell, bone, and stubborn armor." },
+  { id: "wand", name: "Wand", type: "wand", slot: "mainHand", part: null, hands: 1, subType: "arcane", atk: 2, def: 1, hp: 0, crit: 1, dodge: 0, codexText: "A focus for quick rites and narrow lines of force." },
+  { id: "staff", name: "Staff", type: "staff", slot: "mainHand", part: null, hands: 1, subType: "focus", atk: 3, def: 1, hp: 1, crit: 0, dodge: 0, codexText: "A long ritual focus that steadies the hand and the pulse." },
+  { id: "greatsword", name: "Greatsword", type: "twoHandWeapon", slot: "mainHand", part: null, hands: 2, subType: "heavy", atk: 6, def: 0, hp: 0, crit: 0, dodge: -1, codexText: "A broad iron slab made for ending a fight in one clean exchange." },
+  { id: "warhammer", name: "Warhammer", type: "twoHandWeapon", slot: "mainHand", part: null, hands: 2, subType: "heavy", atk: 7, def: 0, hp: 1, crit: 0, dodge: -2, codexText: "A heavy crusher suited for wardens, beetles, and doors." },
+  { id: "buckler", name: "Buckler", type: "shield", slot: "offHand", part: null, hands: 1, subType: "guard", atk: 0, def: 2, hp: 0, crit: 0, dodge: 1, codexText: "Small enough to turn a blow without slowing the wrist." },
+  { id: "kite_shield", name: "Kite Shield", type: "shield", slot: "offHand", part: null, hands: 1, subType: "guard", atk: 0, def: 3, hp: 1, crit: 0, dodge: 0, codexText: "A broad shield fit for a steady line and patient advance." },
+  { id: "hood", name: "Hood", type: "armor", slot: "head", part: "head", hands: 0, subType: null, atk: 0, def: 1, hp: 1, crit: 0, dodge: 0, codexText: "A plain hood that hides more than it protects." },
+  { id: "helmet", name: "Helmet", type: "armor", slot: "head", part: "head", hands: 0, subType: null, atk: 0, def: 2, hp: 1, crit: 0, dodge: -1, codexText: "Simple forged protection for anyone expecting a hard hit." },
+  { id: "vest", name: "Vest", type: "armor", slot: "chest", part: "chest", hands: 0, subType: null, atk: 0, def: 1, hp: 2, crit: 0, dodge: 0, codexText: "A light chest layer made for motion before armor." },
+  { id: "chestplate", name: "Chestplate", type: "armor", slot: "chest", part: "chest", hands: 0, subType: null, atk: 0, def: 3, hp: 2, crit: 0, dodge: -1, codexText: "Plated protection that trades comfort for survival." },
+  { id: "belt", name: "Belt", type: "armor", slot: "belt", part: "belt", hands: 0, subType: null, atk: 0, def: 1, hp: 1, crit: 0, dodge: 0, codexText: "A practical strap for tools, charms, and emergency salvage." },
+  { id: "pants", name: "Pants", type: "armor", slot: "legs", part: "legs", hands: 0, subType: null, atk: 0, def: 2, hp: 1, crit: 0, dodge: 0, codexText: "Workmanlike legwear meant for stairs, rubble, and grime." },
+  { id: "boots", name: "Boots", type: "armor", slot: "boots", part: "boots", hands: 0, subType: null, atk: 0, def: 1, hp: 0, crit: 0, dodge: 1, codexText: "Good footing saves more lives than bravado ever has." },
+  { id: "ring", name: "Ring", type: "accessory", slot: "ring", part: "ring", hands: 0, subType: null, atk: 0, def: 0, hp: 0, crit: 1, dodge: 1, codexText: "A small circle of luck, vanity, or quiet warding." },
+  { id: "necklace", name: "Necklace", type: "accessory", slot: "necklace", part: "necklace", hands: 0, subType: null, atk: 0, def: 0, hp: 1, crit: 1, dodge: 0, codexText: "A worn charm resting close to the pulse." }
 ];
 
-const rarityPower = {
-  common: 1,
-  rare: 2,
-  epic: 4,
-  legendary: 6,
-  unique: 8
+const PREFIXES = [
+  { id: "rusted", name: "Rusted", allowedTypes: ["weapon", "twoHandWeapon", "shield", "armor"], atk: -1, def: 0, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Time and damp have thinned its edge and dulled its pride." },
+  { id: "sharp", name: "Sharp", allowedTypes: ["weapon"], atk: 2, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "A careful edge that rewards clean intent." },
+  { id: "heavy", name: "Heavy", allowedTypes: ["weapon", "twoHandWeapon", "shield", "armor"], atk: 2, def: 1, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Weight traded for certainty. Slow, but convincing." },
+  { id: "balanced", name: "Balanced", allowedTypes: ["weapon", "wand", "staff", "shield"], atk: 1, def: 1, hp: 0, crit: 0, dodge: 1, effects: [], codexText: "Evenly made, with no wasted angle or pull." },
+  { id: "runed", name: "Runed", allowedTypes: ["wand", "staff", "accessory"], atk: 1, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "Etched marks cling to quiet magic and old intent." },
+  { id: "reinforced", name: "Reinforced", allowedTypes: ["shield", "armor"], atk: 0, def: 2, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Extra plate and stubborn craft turned toward endurance." }
+];
+
+const SUFFIXES = [
+  { id: "of_ash", name: "of Ash", allowedTypes: ["weapon", "twoHandWeapon", "wand", "staff", "shield", "armor", "accessory"], atk: 0, def: 1, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Dust, ruin, and ember cling stubbornly to it." },
+  { id: "of_stone", name: "of Stone", allowedTypes: ["shield", "armor"], atk: 0, def: 2, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Dense and unyielding, as if quarry weight lives inside it." },
+  { id: "of_echoes", name: "of Echoes", allowedTypes: ["wand", "staff", "accessory"], atk: 1, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "Something in it hums with the memory of spoken rites." },
+  { id: "of_decay", name: "of Decay", allowedTypes: ["weapon", "wand", "staff"], atk: 2, def: -1, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Rot-sick force lingers in the grain and edge." },
+  { id: "of_the_hunt", name: "of the Hunt", allowedTypes: ["weapon", "twoHandWeapon", "armor", "accessory"], allowedSlots: ["boots", "ring", "necklace", "mainHand"], atk: 1, def: 0, hp: 0, crit: 0, dodge: 2, effects: [], codexText: "Made for pursuit, patience, and the last clean step." }
+];
+
+const RARITY_RULES = {
+  common: { multiplier: 1.0, prefix: false, suffix: false },
+  uncommon: { multiplier: 1.1, prefix: true, suffix: false },
+  rare: { multiplier: 1.25, prefix: true, suffix: true },
+  epic: { multiplier: 1.45, prefix: true, suffix: true },
+  legendary: { multiplier: 1.7, prefix: true, suffix: true },
+  unique: { multiplier: 1.0, prefix: false, suffix: false }
 };
 
 const UNIQUE_ITEM_TEMPLATES = [
@@ -997,7 +1074,8 @@ function getRarityOrder(rarity) {
     legendary: 4,
     epic: 3,
     rare: 2,
-    common: 1
+    uncommon: 1,
+    common: 0
   }[rarity] || 0;
 }
 
@@ -1059,12 +1137,13 @@ function renderCodexRow(entry, tab, isSelected) {
   }
 
   if (tab === "EQUIPMENT") {
-    let rarity = entry.rarity || "common";
-    let quality = rarity === "unique" ? "relic" : `${getStarDisplay(Math.max(1, entry.bestStars || 0)).trim() || "★"}`;
+    let rarity = entry.highestRarity || entry.rarity || "common";
+    let prefixCount = Object.keys(entry.discoveredPrefixes || {}).length;
+    let suffixCount = Object.keys(entry.discoveredSuffixes || {}).length;
     let brief = rarity === "unique"
       ? "lore relic"
-      : `+${entry.bestAtk || 0} ATK / +${entry.bestDef || 0} DEF`;
-    return `${marker}<span class="${rarity}">${entry.name}</span> <span class="codex-meta">${rarity} ${quality} ${brief}</span>`;
+      : `p:${prefixCount} s:${suffixCount} +${entry.bestAtk || 0}/+${entry.bestDef || 0}`;
+    return `${marker}<span class="${rarity}">${entry.name}</span> <span class="codex-meta">${rarity} ${brief}</span>`;
   }
 
   let className = entry.className || "codex-note";
@@ -1089,20 +1168,27 @@ function renderCodexDetail(entry, tab) {
   }
 
   if (tab === "EQUIPMENT") {
-    let rarity = entry.rarity || "common";
-    let qualityText = rarity === "unique"
-      ? "quality: unique"
-      : `best quality: ${"★".repeat(Math.max(1, entry.bestStars || 0))}`;
+    let rarity = entry.highestRarity || entry.rarity || "common";
     let typeLine = rarity === "unique"
       ? `<span class="codex-meta">ancient item record</span>`
       : `<span class="codex-meta">${entry.type} [${entry.slot}]${entry.hands === 2 ? " 2H" : ""}</span>`;
     let effectLine = entry.specialEffect
       ? `\n<span class="unique-effect">effect: ${entry.specialEffect}</span>`
       : "";
+    let prefixes = Object.values(entry.discoveredPrefixes || {});
+    let suffixes = Object.values(entry.discoveredSuffixes || {});
+    let affixLine = rarity === "unique"
+      ? `<span class="codex-note">${entry.description || "A relic with a name older than the ledger."}</span>`
+      : `<span class="codex-note">prefixes: ${prefixes.length ? prefixes.join(", ") : "none"} | suffixes: ${suffixes.length ? suffixes.join(", ") : "none"}</span>`;
+    let descriptionLine = rarity === "unique" || !entry.description
+      ? ""
+      : `\n<span class="codex-meta">${entry.description}</span>`;
     return `<span class="${rarity}">${entry.name}</span>\n`
       + `${typeLine}\n`
       + `<span class="codex-meta">seen: ${entry.seen} | equipped: ${entry.equipped}</span>\n`
-      + `<span class="codex-note">best rolls: +${entry.bestAtk || 0} ATK / +${entry.bestDef || 0} DEF | ${qualityText}</span>`
+      + `<span class="codex-note">best rolls: +${entry.bestAtk || 0} ATK / +${entry.bestDef || 0} DEF / +${entry.bestHp || 0} HP / +${entry.bestCrit || 0} CRIT / +${entry.bestDodge || 0} DODGE</span>\n`
+      + affixLine
+      + descriptionLine
       + effectLine;
   }
 
@@ -1230,11 +1316,28 @@ function normalizeMaterialStack(item) {
 function normalizeGearItem(item) {
   if (!item || isMaterial(item)) return item;
   if (item.rarity === "unique") {
-    item.stars = 0;
+    item.effects = Array.isArray(item.effects) ? item.effects : [];
+    item.isUnique = true;
+    item.baseId = item.baseId || item.id || item.name;
+    item.baseName = item.baseName || item.name;
+    item.prefixId = null;
+    item.prefixName = null;
+    item.suffixId = null;
+    item.suffixName = null;
+    item.codexText = item.codexText || item.specialEffect || "An old relic with a will of its own.";
     if (!item.specialEffect) item.specialEffect = "Ancient power stirs within.";
   } else {
-    item.stars = getItemStars(item);
+    item.baseId = item.baseId || `legacy:${item.type}:${item.slot}:${item.part || item.subType || item.name || "gear"}`;
+    item.baseName = item.baseName || item.name || item.type;
+    item.prefixId = item.prefixId || null;
+    item.prefixName = item.prefixName || null;
+    item.suffixId = item.suffixId || null;
+    item.suffixName = item.suffixName || null;
+    item.effects = Array.isArray(item.effects) ? item.effects : [];
+    item.codexText = item.codexText || "Recovered field gear logged by the guild.";
+    item.isUnique = false;
   }
+  delete item.stars;
   return item;
 }
 
@@ -1243,39 +1346,38 @@ function rollBaseRarityByFloor() {
   let roll = Math.random();
 
   if (floor === 1) {
-    return roll < 0.97 ? "common" : "rare";
+    return roll < 0.85 ? "common" : "uncommon";
   }
   if (floor === 2) {
-    return roll < 0.90 ? "common" : "rare";
+    if (roll < 0.65) return "common";
+    if (roll < 0.95) return "uncommon";
+    return "rare";
   }
   if (floor <= 4) {
-    if (roll < 0.72) return "common";
-    if (roll < 0.96) return "rare";
+    if (roll < 0.40) return "common";
+    if (roll < 0.75) return "uncommon";
+    if (roll < 0.95) return "rare";
     return "epic";
   }
   if (floor <= 7) {
-    if (roll < 0.50) return "common";
+    if (roll < 0.24) return "common";
+    if (roll < 0.56) return "uncommon";
     if (roll < 0.84) return "rare";
-    if (roll < 0.98) return "epic";
+    if (roll < 0.97) return "epic";
     return "legendary";
   }
   if (floor <= 10) {
-    if (roll < 0.28) return "common";
-    if (roll < 0.68) return "rare";
-    if (roll < 0.93) return "epic";
+    if (roll < 0.12) return "common";
+    if (roll < 0.34) return "uncommon";
+    if (roll < 0.66) return "rare";
+    if (roll < 0.91) return "epic";
     return "legendary";
   }
-  if (roll < 0.12) return "common";
-  if (roll < 0.47) return "rare";
-  if (roll < 0.82) return "epic";
+  if (roll < 0.08) return "common";
+  if (roll < 0.23) return "uncommon";
+  if (roll < 0.52) return "rare";
+  if (roll < 0.81) return "epic";
   return "legendary";
-}
-
-function maxStarsByFloor() {
-  if (dungeon.floor <= 2) return 2;
-  if (dungeon.floor <= 5) return 3;
-  if (dungeon.floor <= 8) return 4;
-  return 5;
 }
 
 function createUniqueItem() {
@@ -1297,13 +1399,21 @@ function createUniqueItem() {
   return {
     id: t.id,
     name: t.name,
+    baseId: t.id,
+    baseName: t.name,
     type: t.type,
     part: t.part || null,
     subType: t.subType || null,
     hands: t.hands,
     slot: t.slot,
     rarity: "unique",
-    stars: 0,
+    prefixId: null,
+    prefixName: null,
+    suffixId: null,
+    suffixName: null,
+    effects: [],
+    isUnique: true,
+    codexText: t.codexText || t.specialEffect,
     specialEffect: t.specialEffect,
     atk: baseAtk + floorBonus + rand(0, 2),
     def: baseDef + floorBonus + rand(0, 2),
@@ -1350,77 +1460,121 @@ function addMaterialToInventory(materialItem) {
 function registerEquipmentSeen(item) {
   let key = item.rarity === "unique"
     ? `unique:${item.id || item.name}`
-    : `${item.type}:${item.slot}:${item.hands || 0}`;
+    : `base:${item.baseId || item.name}`;
   if (!codex.equipment[key]) {
     codex.equipment[key] = {
-      name: item.rarity === "unique" ? item.name : `${item.type} [${item.slot}]`,
+      name: item.rarity === "unique" ? item.name : (item.baseName || item.name),
       type: item.type,
       slot: item.slot,
+      baseId: item.baseId || "",
       hands: item.hands || 0,
       rarity: item.rarity || "common",
+      highestRarity: item.rarity || "common",
       specialEffect: item.specialEffect || "",
+      description: item.codexText || "",
       seen: 0,
       equipped: 0,
       bestAtk: 0,
       bestDef: 0,
-      bestStars: 0
+      bestHp: 0,
+      bestCrit: 0,
+      bestDodge: 0,
+      discoveredPrefixes: {},
+      discoveredSuffixes: {}
     };
   }
 
   codex.equipment[key].seen++;
+  if (getRarityOrder(item.rarity || "common") > getRarityOrder(codex.equipment[key].highestRarity || codex.equipment[key].rarity)) {
+    codex.equipment[key].highestRarity = item.rarity || "common";
+  }
   codex.equipment[key].bestAtk = Math.max(codex.equipment[key].bestAtk, item.atk || 0);
   codex.equipment[key].bestDef = Math.max(codex.equipment[key].bestDef, item.def || 0);
-  codex.equipment[key].bestStars = Math.max(codex.equipment[key].bestStars || 0, getItemStars(item));
+  codex.equipment[key].bestHp = Math.max(codex.equipment[key].bestHp || 0, item.hp || 0);
+  codex.equipment[key].bestCrit = Math.max(codex.equipment[key].bestCrit || 0, item.crit || 0);
+  codex.equipment[key].bestDodge = Math.max(codex.equipment[key].bestDodge || 0, item.dodge || 0);
+  codex.equipment[key].description = codex.equipment[key].description || item.codexText || "";
+  if (item.prefixId && item.prefixName) codex.equipment[key].discoveredPrefixes[item.prefixId] = item.prefixName;
+  if (item.suffixId && item.suffixName) codex.equipment[key].discoveredSuffixes[item.suffixId] = item.suffixName;
 }
 
 function registerEquipmentEquipped(item) {
   let key = item.rarity === "unique"
     ? `unique:${item.id || item.name}`
-    : `${item.type}:${item.slot}:${item.hands || 0}`;
+    : `base:${item.baseId || item.name}`;
   if (!codex.equipment[key]) registerEquipmentSeen(item);
   codex.equipment[key].equipped++;
 }
 
+function matchesAffix(base, affix) {
+  if (affix.allowedTypes && !affix.allowedTypes.includes(base.type)) return false;
+  if (affix.allowedSlots && !affix.allowedSlots.includes(base.slot)) return false;
+  return true;
+}
+
+function pickAffix(pool, base) {
+  let valid = pool.filter(affix => matchesAffix(base, affix));
+  if (!valid.length) return null;
+  return valid[rand(0, valid.length - 1)];
+}
+
+function buildGeneratedName(base, prefix, suffix) {
+  return `${prefix ? `${prefix.name} ` : ""}${base.name}${suffix ? ` ${suffix.name}` : ""}`;
+}
+
+function buildGeneratedCodexText(base, prefix, suffix) {
+  let parts = [base.codexText];
+  if (prefix?.codexText) parts.push(prefix.codexText);
+  if (suffix?.codexText) parts.push(suffix.codexText);
+  return parts.filter(Boolean).join(" ");
+}
+
 function generateItem(rarity) {
-  let template = ITEM_GENERATION_POOL[rand(0, ITEM_GENERATION_POOL.length - 1)];
+  let base = BASE_ITEMS[rand(0, BASE_ITEMS.length - 1)];
+  let rarityRule = RARITY_RULES[rarity] || RARITY_RULES.common;
+  let prefix = rarityRule.prefix ? pickAffix(PREFIXES, base) : null;
+  let suffix = rarityRule.suffix ? pickAffix(SUFFIXES, base) : null;
+  let floorBonus = Math.max(0, Math.floor((dungeon.floor - 1) / 3));
 
-  let power = rarityPower[rarity] + Math.floor((dungeon.floor - 1) / 2);
-  let stars = rand(1, maxStarsByFloor());
-  const starMultiplier = {
-    1: 0.65,
-    2: 0.82,
-    3: 1.0,
-    4: 1.18,
-    5: 1.35
-  };
-  let scaledPower = Math.max(1, Math.round(power * starMultiplier[stars]));
+  let atk = base.atk + (prefix?.atk || 0) + (suffix?.atk || 0);
+  let def = base.def + (prefix?.def || 0) + (suffix?.def || 0);
+  let hp = base.hp + (prefix?.hp || 0) + (suffix?.hp || 0);
+  let crit = base.crit + (prefix?.crit || 0) + (suffix?.crit || 0);
+  let dodge = base.dodge + (prefix?.dodge || 0) + (suffix?.dodge || 0);
 
-  let atkBias = ["weapon", "wand", "staff", "twoHandWeapon"].includes(template.type) ? 1 : 0;
-  let defBias = ["shield", "armor"].includes(template.type) ? 1 : 0;
+  atk = Math.round(atk * rarityRule.multiplier);
+  def = Math.round(def * rarityRule.multiplier);
+  hp = Math.round(hp * rarityRule.multiplier);
+  crit = Math.round(crit * rarityRule.multiplier);
+  dodge = Math.round(dodge * rarityRule.multiplier);
 
-  let label = template.type;
-  if (template.type === "weapon") label = "blade";
-  if (template.type === "twoHandWeapon") label = "greatblade";
-  if (template.type === "armor") {
-    const armorLabels = { head: "helmet", chest: "chestplate", belt: "belt", legs: "pants", boots: "boots" };
-    label = armorLabels[template.part] || template.part;
-  }
-  if (template.type === "accessory") label = template.part;
+  if (["weapon", "twoHandWeapon", "wand", "staff"].includes(base.type)) atk += floorBonus;
+  if (["shield", "armor"].includes(base.type)) def += floorBonus;
+  if (["shield", "armor", "accessory"].includes(base.type)) hp += Math.floor(floorBonus / 2);
 
   return {
-    name: label,
-    type: template.type,
-    part: template.part || null,
-    subType: template.subType || null,
-    hands: template.hands,
-    slot: template.slot,
-    rarity: rarity,
-    stars,
-    atk: rand(0, scaledPower + atkBias),
-    def: rand(0, scaledPower + defBias),
-    hp: rand(0, scaledPower * 2),
-    crit: rand(0, scaledPower),
-    dodge: rand(0, scaledPower)
+    id: `gear_${base.id}_${prefix?.id || "plain"}_${suffix?.id || "plain"}_${turn}_${rand(1000, 9999)}`,
+    name: buildGeneratedName(base, prefix, suffix),
+    type: base.type,
+    part: base.part || null,
+    subType: base.subType || null,
+    hands: base.hands,
+    slot: base.slot,
+    baseId: base.id,
+    baseName: base.name,
+    prefixId: prefix?.id || null,
+    prefixName: prefix?.name || null,
+    suffixId: suffix?.id || null,
+    suffixName: suffix?.name || null,
+    rarity,
+    atk,
+    def,
+    hp,
+    crit,
+    dodge,
+    effects: [...(prefix?.effects || []), ...(suffix?.effects || [])],
+    codexText: buildGeneratedCodexText(base, prefix, suffix),
+    isUnique: false
   };
 }
 
@@ -1494,14 +1648,32 @@ function loadGame() {
 
     // Backfill codex fields introduced after older saves were created.
     for (let key in codex.equipment) {
-      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "bestStars")) {
-        codex.equipment[key].bestStars = 0;
-      }
       if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "rarity")) {
         codex.equipment[key].rarity = "common";
       }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "highestRarity")) {
+        codex.equipment[key].highestRarity = codex.equipment[key].rarity || "common";
+      }
       if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "specialEffect")) {
         codex.equipment[key].specialEffect = "";
+      }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "description")) {
+        codex.equipment[key].description = "";
+      }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "bestHp")) {
+        codex.equipment[key].bestHp = 0;
+      }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "bestCrit")) {
+        codex.equipment[key].bestCrit = 0;
+      }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "bestDodge")) {
+        codex.equipment[key].bestDodge = 0;
+      }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "discoveredPrefixes")) {
+        codex.equipment[key].discoveredPrefixes = {};
+      }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "discoveredSuffixes")) {
+        codex.equipment[key].discoveredSuffixes = {};
       }
     }
   }
@@ -1523,6 +1695,7 @@ function enterTown(message = "Returned to town.") {
   state = "TOWN";
   player.inCombat = false;
   logAction(message);
+  setAtmosphereBanner("town");
   saveGame();
 }
 
@@ -1623,6 +1796,7 @@ function generateRoom() {
   });
 
   logAction(`Entered dungeon floor ${dungeon.floor}.`);
+  setAtmosphereBanner("dungeon");
   updateCombatState();
 }
 
@@ -1745,11 +1919,15 @@ Kill what you find. Loot what you can. Come back alive.</span>
 3. Blacksmith
 4. Guild
 C. Inventory
+K. Codex
 M. Main Menu
 
 Gold: ${player.gold}
 HP: ${player.hp}
 `;
+  if (atmosphereBanner) {
+    gameEl.innerHTML += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
+  }
   gameEl.innerHTML += renderActionLog();
     drawUI();
     return;
@@ -1791,6 +1969,9 @@ HP: ${player.hp}
     text += '\n<span class="codex-section">-- Detail --</span>\n';
     text += `${renderCodexDetail(selected, codexTab)}\n`;
     text += '\n<span class="codex-meta">[↑↓] navigate | [Tab] switch tab | [K/ESC] exit | [L] log</span>';
+    if (atmosphereBanner) {
+      text += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
+    }
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -1912,10 +2093,13 @@ HP: ${player.hp}
   }
 
   output += `\nDungeon Floor: ${dungeon.floor}`;
-  output += `\nCombat: ${player.inCombat ? '<span class="log-alert">ENGAGED</span>' : '<span class="codex-meta">idle</span>'}`;
+  output += `\n${getClassCombatLabel()}: ${player.inCombat ? '<span class="log-alert">ENGAGED</span>' : '<span class="codex-meta">idle</span>'}`;
   output += `\n${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax} | Skill[Q]: ${getClassSkillName()} (2 ${player.resourceType})`;
   output += `\nFloor: ${dungeon.floor}`;
   output += `\nRooms cleared: ${dungeon.roomsCleared}`;
+  if (atmosphereBanner) {
+    output += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
+  }
   output += renderActionLog();
 
   gameEl.innerHTML = output;
@@ -1924,6 +2108,27 @@ HP: ${player.hp}
 
 // ===== UI =====
 function drawUI() {
+  if (state === "TOWN") {
+    let text = `=== ASHROOT HUB ===\n`;
+    text += `HP: ${player.hp}/${player.maxHp}\n`;
+    text += `Gold: ${player.gold}\n`;
+    text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
+    if (atmosphereBanner) text += `\n<span class="flow-banner">${atmosphereBanner}</span>\n`;
+    uiEl.innerHTML = text;
+    return;
+  }
+
+  if (state === "CODEX") {
+    let text = `=== CODEX MODE ===\n`;
+    text += `Active Tab: ${codexTab}\n`;
+    text += `Class Lens: ${player.class || "neutral"}\n\n`;
+    text += `=== NAVIGATION ===\n`;
+    text += `<span class="codex-meta">[↑↓] select\n[Tab] cycle tabs\n[K/ESC] close codex\n[L] log</span>\n`;
+    text += `${getClassFlavorHint()}\n`;
+    uiEl.innerHTML = text;
+    return;
+  }
+
   let text = `=== CHARACTER ===\n`;
   text += `Class: ${player.class || "unknown"}\n`;
   text += `HP: ${player.hp}/${player.maxHp}\n`;
@@ -1932,10 +2137,10 @@ function drawUI() {
   text += `CRIT: ${player.crit}%\n`;
   text += `DODGE: ${player.dodge}%\n`;
   text += `${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax}${player.inCombat ? " [combat]" : " [idle]"}\n`;
-  text += `Combat: ${player.inCombat ? "ENGAGED" : "idle"}\n`;
+  text += `${getClassCombatLabel()}: ${player.inCombat ? "ENGAGED" : "idle"}\n`;
   text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
   text += `Gold: ${player.gold}\n\n`;
-  text += "=== EQUIPMENT ===\n";
+  text += `${getClassEquipmentHeader()}\n`;
 
   for (let [slot, item] of Object.entries(player.equipment)) {
     if (!item) {
@@ -2057,6 +2262,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "k" && state !== "CODEX" && !menuScreens.includes(state)) {
     codexReturnState = state;
     state = "CODEX";
+    setAtmosphereBanner("codex");
     draw();
     return;
   }
@@ -2203,10 +2409,14 @@ document.addEventListener("keydown", (e) => {
       return;
     }
 
-    let baseValue = { common: 5, rare: 10, epic: 20, legendary: 50, unique: 120 }[item.rarity] || 5;
-    let qualityMultiplier = 0.7 + getItemStars(item) * 0.15;
-    if (item.rarity === "unique") qualityMultiplier = 1.2;
-    let value = Math.max(1, Math.round(baseValue * qualityMultiplier));
+    let value = {
+      common: 5,
+      uncommon: 8,
+      rare: 14,
+      epic: 26,
+      legendary: 54,
+      unique: 120
+    }[item.rarity] || 5;
 
     player.gold += value;
     player.inventory.splice(i, 1);
@@ -2492,7 +2702,11 @@ document.addEventListener("keydown", (e) => {
         let item = maybeRollUniqueFromChest() || generateItem(e.rarity);
         player.inventory.push(item);
         registerEquipmentSeen(item);
-        finishTurn(`Opened chest and found ${renderItemNameSpan(item)}.`);
+        let chestLine = `Opened chest and found ${renderItemNameSpan(item)}.`;
+        if (item.rarity === "unique") {
+          chestLine += `\n${getUniqueStingerLine("chest")}`;
+        }
+        finishTurn(chestLine);
         draw();
         return;
       }

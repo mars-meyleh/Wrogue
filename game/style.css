@@ -122,6 +122,7 @@ body {
 
 /* rarity colors */
 .common { color: #aaa; }
+.uncommon { color: #8ed081; }
 .rare { color: #46d4ff; }
 .epic { color: #ff7ef3; }
 .legendary { color: #ffd24a; }
@@ -129,6 +130,12 @@ body {
 
 .unique-effect {
   color: #ffb86a;
+}
+
+.unique-stinger {
+  color: #ffc66f;
+  font-weight: bold;
+  letter-spacing: 0.05em;
 }
 
 .tile-player {
@@ -173,6 +180,12 @@ body {
   color: var(--note-color);
 }
 
+.flow-banner {
+  color: var(--section-color);
+  font-weight: bold;
+  letter-spacing: 0.04em;
+}
+
 .log-heal {
   color: #5fd37a;
 }
@@ -191,6 +204,10 @@ body {
 
 .log-flee {
   color: #c9a96e;
+}
+
+.log-unique {
+  color: #ffbf73;
 }
 
 .log-dodge {
