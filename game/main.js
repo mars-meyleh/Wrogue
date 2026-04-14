@@ -1,6 +1,7 @@
 const gameEl = document.getElementById("game");
 const uiEl = document.getElementById("ui");
 
+// ===== RUNTIME STATE =====
 let state = "MENU";
 let turn = 0;
 let actionLog = ["Welcome to Wrogue."];
@@ -10,6 +11,7 @@ let inventoryTab = "GEAR";
 let inventorySelection = 0;
 let codexTab = "CREATURES";
 let codexSelection = 0;
+let codexEquipmentView = "BASES";
 let showActionLog = true;
 let visualFlash = null;
 let atmosphereBanner = "";
@@ -54,9 +56,11 @@ let player = {
 let map = [];
 let entities = [];
 
+// ===== STATIC UI DATA =====
 const WIDTH = Math.floor(8 * 2.5);
 const HEIGHT = Math.floor(5 * 2.5);
 const CODEX_TABS = ["CREATURES", "MATERIALS", "EQUIPMENT", "TOWN", "LORE"];
+const CODEX_EQUIPMENT_VIEWS = ["BASES", "PREFIXES", "SUFFIXES", "RELICS"];
 const CODEX_TOWN_ENTRIES = [
   {
     title: "Ashroot",
@@ -104,7 +108,7 @@ const CODEX_LORE_ENTRIES = [
   }
 ];
 
-// ===== UTIL =====
+// ===== UTILITIES =====
 function rand(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -317,6 +321,8 @@ function getOpenPosition() {
 
   return { x: 1, y: 1 };
 }
+
+// ===== ENEMY MOVEMENT AND CLASS COMBAT =====
 
 function getEnemyStateIcon(state) {
   if (state === "ALERT") return "!";
@@ -601,6 +607,8 @@ function resolveEnemyAttack(enemy, eDef, events) {
 function runEnemyBehaviorTurn() {
   if (state !== "DUNGEON") return;
 
+  // Enemy turns use a compact state machine so patrol, aggro, attack, and reset
+  // all stay readable while still leaving room for richer behavior later.
   let enemyEvents = [];
   let alertRange = 4;
   let chaseRange = 2;
@@ -714,6 +722,7 @@ function runEnemyBehaviorTurn() {
   }
 }
 
+// ===== CONTENT REGISTRIES =====
 const BASE_ITEMS = [
   { id: "dagger", name: "Dagger", type: "weapon", slot: "mainHand", part: null, hands: 1, subType: "blade", atk: 2, def: 0, hp: 0, crit: 1, dodge: 0, codexText: "A short blade favored for quick work in tight corridors." },
   { id: "sword", name: "Sword", type: "weapon", slot: "mainHand", part: null, hands: 1, subType: "blade", atk: 3, def: 0, hp: 0, crit: 0, dodge: 0, codexText: "A reliable hunter's sidearm with no wasted motion." },
@@ -737,20 +746,20 @@ const BASE_ITEMS = [
 ];
 
 const PREFIXES = [
-  { id: "rusted", name: "Rusted", allowedTypes: ["weapon", "twoHandWeapon", "shield", "armor"], atk: -1, def: 0, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Time and damp have thinned its edge and dulled its pride." },
-  { id: "sharp", name: "Sharp", allowedTypes: ["weapon"], atk: 2, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "A careful edge that rewards clean intent." },
-  { id: "heavy", name: "Heavy", allowedTypes: ["weapon", "twoHandWeapon", "shield", "armor"], atk: 2, def: 1, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Weight traded for certainty. Slow, but convincing." },
-  { id: "balanced", name: "Balanced", allowedTypes: ["weapon", "wand", "staff", "shield"], atk: 1, def: 1, hp: 0, crit: 0, dodge: 1, effects: [], codexText: "Evenly made, with no wasted angle or pull." },
-  { id: "runed", name: "Runed", allowedTypes: ["wand", "staff", "accessory"], atk: 1, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "Etched marks cling to quiet magic and old intent." },
-  { id: "reinforced", name: "Reinforced", allowedTypes: ["shield", "armor"], atk: 0, def: 2, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Extra plate and stubborn craft turned toward endurance." }
+  { id: "rusted", name: "Rusted", allowedTypes: ["weapon", "twoHandWeapon", "shield", "armor"], minFloor: 3, classWeight: { witch: 0.65, orc: 1.15 }, atk: -1, def: 0, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Time and damp have thinned its edge and dulled its pride." },
+  { id: "sharp", name: "Sharp", allowedTypes: ["weapon"], minFloor: 1, classWeight: { witch: 0.9, orc: 1.25 }, atk: 2, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "A careful edge that rewards clean intent." },
+  { id: "heavy", name: "Heavy", allowedTypes: ["weapon", "twoHandWeapon", "shield", "armor"], minFloor: 2, classWeight: { witch: 0.7, orc: 1.35 }, atk: 2, def: 1, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Weight traded for certainty. Slow, but convincing." },
+  { id: "balanced", name: "Balanced", allowedTypes: ["weapon", "wand", "staff", "shield"], minFloor: 1, classWeight: { witch: 1.15, orc: 1.0 }, atk: 1, def: 1, hp: 0, crit: 0, dodge: 1, effects: [], codexText: "Evenly made, with no wasted angle or pull." },
+  { id: "runed", name: "Runed", allowedTypes: ["wand", "staff", "accessory"], minFloor: 1, classWeight: { witch: 1.5, orc: 0.65 }, atk: 1, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "Etched marks cling to quiet magic and old intent." },
+  { id: "reinforced", name: "Reinforced", allowedTypes: ["shield", "armor"], minFloor: 2, classWeight: { witch: 0.8, orc: 1.3 }, atk: 0, def: 2, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Extra plate and stubborn craft turned toward endurance." }
 ];
 
 const SUFFIXES = [
-  { id: "of_ash", name: "of Ash", allowedTypes: ["weapon", "twoHandWeapon", "wand", "staff", "shield", "armor", "accessory"], atk: 0, def: 1, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Dust, ruin, and ember cling stubbornly to it." },
-  { id: "of_stone", name: "of Stone", allowedTypes: ["shield", "armor"], atk: 0, def: 2, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Dense and unyielding, as if quarry weight lives inside it." },
-  { id: "of_echoes", name: "of Echoes", allowedTypes: ["wand", "staff", "accessory"], atk: 1, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "Something in it hums with the memory of spoken rites." },
-  { id: "of_decay", name: "of Decay", allowedTypes: ["weapon", "wand", "staff"], atk: 2, def: -1, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Rot-sick force lingers in the grain and edge." },
-  { id: "of_the_hunt", name: "of the Hunt", allowedTypes: ["weapon", "twoHandWeapon", "armor", "accessory"], allowedSlots: ["boots", "ring", "necklace", "mainHand"], atk: 1, def: 0, hp: 0, crit: 0, dodge: 2, effects: [], codexText: "Made for pursuit, patience, and the last clean step." }
+  { id: "of_ash", name: "of Ash", allowedTypes: ["weapon", "twoHandWeapon", "wand", "staff", "shield", "armor", "accessory"], minFloor: 1, classWeight: { witch: 1.05, orc: 0.95 }, atk: 0, def: 1, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Dust, ruin, and ember cling stubbornly to it." },
+  { id: "of_stone", name: "of Stone", allowedTypes: ["shield", "armor"], minFloor: 2, classWeight: { witch: 0.85, orc: 1.35 }, atk: 0, def: 2, hp: 1, crit: 0, dodge: -1, effects: [], codexText: "Dense and unyielding, as if quarry weight lives inside it." },
+  { id: "of_echoes", name: "of Echoes", allowedTypes: ["wand", "staff", "accessory"], minFloor: 1, classWeight: { witch: 1.45, orc: 0.7 }, atk: 1, def: 0, hp: 0, crit: 1, dodge: 0, effects: [], codexText: "Something in it hums with the memory of spoken rites." },
+  { id: "of_decay", name: "of Decay", allowedTypes: ["weapon", "wand", "staff"], minFloor: 3, classWeight: { witch: 1.15, orc: 1.0 }, atk: 2, def: -1, hp: 0, crit: 0, dodge: 0, effects: [], codexText: "Rot-sick force lingers in the grain and edge." },
+  { id: "of_the_hunt", name: "of the Hunt", allowedTypes: ["weapon", "twoHandWeapon", "armor", "accessory"], allowedSlots: ["boots", "ring", "necklace", "mainHand"], minFloor: 2, classWeight: { witch: 0.95, orc: 1.2 }, atk: 1, def: 0, hp: 0, crit: 0, dodge: 2, effects: [], codexText: "Made for pursuit, patience, and the last clean step." }
 ];
 
 const RARITY_RULES = {
@@ -1029,6 +1038,7 @@ const ENEMY_DEFS = {
   }
 };
 
+// ===== CODEX AND DISCOVERY =====
 function getEnemyLore(key, entry) {
   let table = ENEMY_DEFS[key]?.lore;
   if (!table) return "Unknown creature.";
@@ -1080,6 +1090,8 @@ function getRarityOrder(rarity) {
 }
 
 function getCodexTabItems(tab) {
+  // Equipment entries are transformed into view-specific records here so the
+  // codex can pivot between bases, affixes, and relics without duplicating save data.
   if (tab === "CREATURES") {
     return Object.entries(codex.enemies)
       .map(([key, entry]) => ({ key, ...entry }))
@@ -1098,15 +1110,59 @@ function getCodexTabItems(tab) {
   }
 
   if (tab === "EQUIPMENT") {
-    return Object.entries(codex.equipment)
-      .map(([key, entry]) => ({ key, ...entry }))
-      .sort((a, b) => {
-        let uniqueDiff = Number(b.rarity === "unique") - Number(a.rarity === "unique");
-        if (uniqueDiff !== 0) return uniqueDiff;
-        let rarityDiff = getRarityOrder(b.rarity) - getRarityOrder(a.rarity);
-        if (rarityDiff !== 0) return rarityDiff;
-        return (a.name || "").localeCompare(b.name || "");
-      });
+    if (codexEquipmentView === "BASES") {
+      return Object.entries(codex.equipment)
+        .map(([key, entry]) => ({ key, ...entry }))
+        .filter(entry => (entry.highestRarity || entry.rarity) !== "unique")
+        .sort((a, b) => {
+          let rarityDiff = getRarityOrder((b.highestRarity || b.rarity || "common")) - getRarityOrder((a.highestRarity || a.rarity || "common"));
+          if (rarityDiff !== 0) return rarityDiff;
+          return (a.name || "").localeCompare(b.name || "");
+        })
+        .map(entry => ({ ...entry, itemKind: "base" }));
+    }
+
+    if (codexEquipmentView === "RELICS") {
+      return Object.entries(codex.equipment)
+        .map(([key, entry]) => ({ key, ...entry }))
+        .filter(entry => (entry.highestRarity || entry.rarity) === "unique")
+        .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+        .map(entry => ({ ...entry, itemKind: "relic" }));
+    }
+
+    if (codexEquipmentView === "PREFIXES") {
+      return PREFIXES
+        .map(prefix => {
+          let discoveredOn = Object.values(codex.equipment).filter(entry => Object.prototype.hasOwnProperty.call(entry.discoveredPrefixes || {}, prefix.id));
+          let seen = discoveredOn.reduce((sum, entry) => sum + (entry.seen || 0), 0);
+          return {
+            ...prefix,
+            itemKind: "prefix",
+            discovered: discoveredOn.length > 0,
+            seen,
+            discoveredOn: discoveredOn.length
+          };
+        })
+        .sort((a, b) => Number(b.discovered) - Number(a.discovered) || a.name.localeCompare(b.name));
+    }
+
+    if (codexEquipmentView === "SUFFIXES") {
+      return SUFFIXES
+        .map(suffix => {
+          let discoveredOn = Object.values(codex.equipment).filter(entry => Object.prototype.hasOwnProperty.call(entry.discoveredSuffixes || {}, suffix.id));
+          let seen = discoveredOn.reduce((sum, entry) => sum + (entry.seen || 0), 0);
+          return {
+            ...suffix,
+            itemKind: "suffix",
+            discovered: discoveredOn.length > 0,
+            seen,
+            discoveredOn: discoveredOn.length
+          };
+        })
+        .sort((a, b) => Number(b.discovered) - Number(a.discovered) || a.name.localeCompare(b.name));
+    }
+
+    return [];
   }
 
   if (tab === "TOWN") return CODEX_TOWN_ENTRIES;
@@ -1137,13 +1193,24 @@ function renderCodexRow(entry, tab, isSelected) {
   }
 
   if (tab === "EQUIPMENT") {
-    let rarity = entry.highestRarity || entry.rarity || "common";
-    let prefixCount = Object.keys(entry.discoveredPrefixes || {}).length;
-    let suffixCount = Object.keys(entry.discoveredSuffixes || {}).length;
-    let brief = rarity === "unique"
-      ? "lore relic"
-      : `p:${prefixCount} s:${suffixCount} +${entry.bestAtk || 0}/+${entry.bestDef || 0}`;
-    return `${marker}<span class="${rarity}">${entry.name}</span> <span class="codex-meta">${rarity} ${brief}</span>`;
+    if (entry.itemKind === "base") {
+      let rarity = entry.highestRarity || entry.rarity || "common";
+      let prefixCount = Object.keys(entry.discoveredPrefixes || {}).length;
+      let suffixCount = Object.keys(entry.discoveredSuffixes || {}).length;
+      let brief = `p:${prefixCount} s:${suffixCount} +${entry.bestAtk || 0}/+${entry.bestDef || 0}`;
+      return `${marker}<span class="${rarity}">${entry.name}</span> <span class="codex-meta">${rarity} ${brief}</span>`;
+    }
+
+    if (entry.itemKind === "relic") {
+      return `${marker}<span class="unique">${entry.name}</span> <span class="codex-meta">relic seen:${entry.seen || 0}</span>`;
+    }
+
+    if (entry.itemKind === "prefix" || entry.itemKind === "suffix") {
+      let label = entry.itemKind === "prefix" ? "prefix" : "suffix";
+      let className = entry.discovered ? "uncommon" : "codex-meta";
+      let stateText = entry.discovered ? `seen:${entry.seen} on:${entry.discoveredOn}` : "undiscovered";
+      return `${marker}<span class="${className}">${entry.name}</span> <span class="codex-meta">${label} ${stateText}</span>`;
+    }
   }
 
   let className = entry.className || "codex-note";
@@ -1168,28 +1235,44 @@ function renderCodexDetail(entry, tab) {
   }
 
   if (tab === "EQUIPMENT") {
-    let rarity = entry.highestRarity || entry.rarity || "common";
-    let typeLine = rarity === "unique"
-      ? `<span class="codex-meta">ancient item record</span>`
-      : `<span class="codex-meta">${entry.type} [${entry.slot}]${entry.hands === 2 ? " 2H" : ""}</span>`;
-    let effectLine = entry.specialEffect
-      ? `\n<span class="unique-effect">effect: ${entry.specialEffect}</span>`
-      : "";
-    let prefixes = Object.values(entry.discoveredPrefixes || {});
-    let suffixes = Object.values(entry.discoveredSuffixes || {});
-    let affixLine = rarity === "unique"
-      ? `<span class="codex-note">${entry.description || "A relic with a name older than the ledger."}</span>`
-      : `<span class="codex-note">prefixes: ${prefixes.length ? prefixes.join(", ") : "none"} | suffixes: ${suffixes.length ? suffixes.join(", ") : "none"}</span>`;
-    let descriptionLine = rarity === "unique" || !entry.description
-      ? ""
-      : `\n<span class="codex-meta">${entry.description}</span>`;
-    return `<span class="${rarity}">${entry.name}</span>\n`
-      + `${typeLine}\n`
-      + `<span class="codex-meta">seen: ${entry.seen} | equipped: ${entry.equipped}</span>\n`
-      + `<span class="codex-note">best rolls: +${entry.bestAtk || 0} ATK / +${entry.bestDef || 0} DEF / +${entry.bestHp || 0} HP / +${entry.bestCrit || 0} CRIT / +${entry.bestDodge || 0} DODGE</span>\n`
-      + affixLine
-      + descriptionLine
-      + effectLine;
+    if (entry.itemKind === "base") {
+      let rarity = entry.highestRarity || entry.rarity || "common";
+      let prefixes = Object.values(entry.discoveredPrefixes || {});
+      let suffixes = Object.values(entry.discoveredSuffixes || {});
+      let descriptionLine = entry.description
+        ? `\n<span class="codex-meta">${entry.description}</span>`
+        : "";
+      return `<span class="${rarity}">${entry.name}</span>\n`
+        + `<span class="codex-meta">${entry.type} [${entry.slot}]${entry.hands === 2 ? " 2H" : ""}</span>\n`
+        + `<span class="codex-meta">seen: ${entry.seen} | equipped: ${entry.equipped}</span>\n`
+        + `<span class="codex-note">best rolls: +${entry.bestAtk || 0} ATK / +${entry.bestDef || 0} DEF / +${entry.bestHp || 0} HP / +${entry.bestCrit || 0} CRIT / +${entry.bestDodge || 0} DODGE</span>\n`
+        + `<span class="codex-note">prefixes: ${prefixes.length ? prefixes.join(", ") : "none"} | suffixes: ${suffixes.length ? suffixes.join(", ") : "none"}</span>`
+        + descriptionLine;
+    }
+
+    if (entry.itemKind === "relic") {
+      let effectLine = entry.specialEffect
+        ? `\n<span class="unique-effect">effect: ${entry.specialEffect}</span>`
+        : "";
+      return `<span class="unique">${entry.name}</span>\n`
+        + `<span class="codex-meta">ancient item record</span>\n`
+        + `<span class="codex-meta">seen: ${entry.seen} | equipped: ${entry.equipped}</span>\n`
+        + `<span class="codex-note">${entry.description || "A relic with a name older than the ledger."}</span>`
+        + effectLine;
+    }
+
+    if (entry.itemKind === "prefix" || entry.itemKind === "suffix") {
+      let discoveredText = entry.discovered
+        ? `<span class="codex-meta">discovered on ${entry.discoveredOn} base ${entry.discoveredOn === 1 ? "record" : "records"}</span>`
+        : `<span class="codex-meta">status: undiscovered</span>`;
+      let weightNote = player.class && entry.classWeight && entry.classWeight[player.class]
+        ? `\n<span class="codex-meta">${player.class} affinity: x${entry.classWeight[player.class].toFixed(2)}</span>`
+        : "";
+      return `<span class="${entry.discovered ? "uncommon" : "codex-meta"}">${entry.name}</span>\n`
+        + `<span class="codex-note">${entry.codexText}</span>\n`
+        + discoveredText
+        + weightNote;
+    }
   }
 
   return `<span class="${entry.className || "codex-note"}">${entry.title}</span>\n`
@@ -1202,6 +1285,12 @@ function renderCodexTabBar() {
   return `<span class="codex-meta">[Tab] ${parts.join(" | ")}</span>`;
 }
 
+function renderCodexEquipmentBar() {
+  let parts = CODEX_EQUIPMENT_VIEWS.map(view => codexEquipmentView === view ? `► ${view}` : view);
+  return `<span class="codex-meta">[\u2190\u2192] ${parts.join(" | ")}</span>`;
+}
+
+// ===== DUNGEON ENCOUNTERS, DROPS, AND GEAR =====
 function getEnemyPool() {
   if (dungeon.floor <= 2)  return ["rat", "goblin"];
   if (dungeon.floor <= 4)  return ["rat", "goblin", "cave_snake"];
@@ -1315,6 +1404,8 @@ function normalizeMaterialStack(item) {
 
 function normalizeGearItem(item) {
   if (!item || isMaterial(item)) return item;
+  // Legacy saves can contain pre-affix gear. Normalize everything into the
+  // current runtime shape before stats, codex tracking, or rendering touch it.
   if (item.rarity === "unique") {
     item.effects = Array.isArray(item.effects) ? item.effects : [];
     item.isUnique = true;
@@ -1509,13 +1600,30 @@ function registerEquipmentEquipped(item) {
 function matchesAffix(base, affix) {
   if (affix.allowedTypes && !affix.allowedTypes.includes(base.type)) return false;
   if (affix.allowedSlots && !affix.allowedSlots.includes(base.slot)) return false;
+  if (affix.minFloor && dungeon.floor < affix.minFloor) return false;
   return true;
+}
+
+function getAffixWeight(affix) {
+  let weight = 1;
+  if (player.class && affix.classWeight && affix.classWeight[player.class]) {
+    weight *= affix.classWeight[player.class];
+  }
+  return Math.max(0.05, weight);
 }
 
 function pickAffix(pool, base) {
   let valid = pool.filter(affix => matchesAffix(base, affix));
   if (!valid.length) return null;
-  return valid[rand(0, valid.length - 1)];
+  // Weight is applied only after slot/type/floor validation so each class bends
+  // the same valid pool instead of bypassing progression rules.
+  let total = valid.reduce((sum, affix) => sum + getAffixWeight(affix), 0);
+  let roll = Math.random() * total;
+  for (let affix of valid) {
+    roll -= getAffixWeight(affix);
+    if (roll <= 0) return affix;
+  }
+  return valid[valid.length - 1];
 }
 
 function buildGeneratedName(base, prefix, suffix) {
@@ -1532,6 +1640,12 @@ function buildGeneratedCodexText(base, prefix, suffix) {
 function generateItem(rarity) {
   let base = BASE_ITEMS[rand(0, BASE_ITEMS.length - 1)];
   let rarityRule = RARITY_RULES[rarity] || RARITY_RULES.common;
+  // Early floors still allow caster and accessory bases, but this nudge prevents
+  // too many fragile openings before the player has tools to support them.
+  if (dungeon.floor <= 2 && ["wand", "staff", "accessory"].includes(base.type) && Math.random() < 0.35) {
+    let earlyPool = BASE_ITEMS.filter(item => item.type === "weapon" || item.type === "shield" || item.type === "armor");
+    if (earlyPool.length) base = earlyPool[rand(0, earlyPool.length - 1)];
+  }
   let prefix = rarityRule.prefix ? pickAffix(PREFIXES, base) : null;
   let suffix = rarityRule.suffix ? pickAffix(SUFFIXES, base) : null;
   let floorBonus = Math.max(0, Math.floor((dungeon.floor - 1) / 3));
@@ -1578,6 +1692,7 @@ function generateItem(rarity) {
   };
 }
 
+// ===== PLAYER STATS AND PERSISTENCE =====
 function getBaseMaxHp() {
   if (player.class === "witch") return 8;
   if (player.class === "orc") return 12;
@@ -1646,7 +1761,7 @@ function loadGame() {
       lore: Array.isArray(save.codex.lore) ? save.codex.lore : []
     };
 
-    // Backfill codex fields introduced after older saves were created.
+    // Backfill newer codex fields so local saves survive data-model growth.
     for (let key in codex.equipment) {
       if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "rarity")) {
         codex.equipment[key].rarity = "common";
@@ -1691,6 +1806,7 @@ function loadGame() {
   return true;
 }
 
+// ===== WORLD FLOW =====
 function enterTown(message = "Returned to town.") {
   state = "TOWN";
   player.inCombat = false;
@@ -1746,6 +1862,8 @@ function generateRoom() {
   map = [];
   entities = [];
 
+  // The current generator builds one bounded chamber. This stays intentionally
+  // simple until biome layouts and tile effects are introduced in later phases.
   // build map FIRST
   for (let y = 0; y < HEIGHT; y++) {
     let row = [];
@@ -1801,7 +1919,7 @@ function generateRoom() {
 }
 
 
-// ===== DRAW =====
+// ===== RENDERING =====
 function draw() {
   applyClassTheme();
 
@@ -1957,6 +2075,9 @@ HP: ${player.hp}
     let text = `<span class="codex-title">${getCodexHeaderTitle()}</span>\n`;
     text += `${renderCodexTabBar()}\n\n`;
     text += `<span class="codex-section">-- ${codexTab} --</span>\n`;
+    if (codexTab === "EQUIPMENT") {
+      text += `${renderCodexEquipmentBar()}\n`;
+    }
 
     if (!items.length) {
       text += '<span class="codex-meta">Nothing recorded yet.</span>\n';
@@ -1968,7 +2089,9 @@ HP: ${player.hp}
 
     text += '\n<span class="codex-section">-- Detail --</span>\n';
     text += `${renderCodexDetail(selected, codexTab)}\n`;
-    text += '\n<span class="codex-meta">[↑↓] navigate | [Tab] switch tab | [K/ESC] exit | [L] log</span>';
+    text += codexTab === "EQUIPMENT"
+      ? '\n<span class="codex-meta">[↑↓] navigate | [←→] equipment view | [Tab] switch tab | [K/ESC] exit | [L] log</span>'
+      : '\n<span class="codex-meta">[↑↓] navigate | [Tab] switch tab | [K/ESC] exit | [L] log</span>';
     if (atmosphereBanner) {
       text += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
     }
@@ -2106,7 +2229,7 @@ HP: ${player.hp}
   drawUI();
 }
 
-// ===== UI =====
+// ===== SIDE PANEL UI =====
 function drawUI() {
   if (state === "TOWN") {
     let text = `=== ASHROOT HUB ===\n`;
@@ -2120,10 +2243,14 @@ function drawUI() {
 
   if (state === "CODEX") {
     let text = `=== CODEX MODE ===\n`;
-    text += `Active Tab: ${codexTab}\n`;
+    text += `Active Tab: ${codexTab}`;
+    if (codexTab === "EQUIPMENT") text += ` / ${codexEquipmentView}`;
+    text += `\n`;
     text += `Class Lens: ${player.class || "neutral"}\n\n`;
     text += `=== NAVIGATION ===\n`;
-    text += `<span class="codex-meta">[↑↓] select\n[Tab] cycle tabs\n[K/ESC] close codex\n[L] log</span>\n`;
+    text += codexTab === "EQUIPMENT"
+      ? `<span class="codex-meta">[↑↓] select\n[←→] equipment view\n[Tab] cycle tabs\n[K/ESC] close codex\n[L] log</span>\n`
+      : `<span class="codex-meta">[↑↓] select\n[Tab] cycle tabs\n[K/ESC] close codex\n[L] log</span>\n`;
     text += `${getClassFlavorHint()}\n`;
     uiEl.innerHTML = text;
     return;
@@ -2161,7 +2288,7 @@ function drawUI() {
   uiEl.innerHTML = text;
 }
 
-// ===== EQUIP =====
+// ===== EQUIPMENT MANAGEMENT =====
 function equipItem(index, shouldLog = true) {
   let item = player.inventory[index];
   if (!item) return null;
@@ -2284,6 +2411,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     let currentIndex = CODEX_TABS.indexOf(codexTab);
     codexTab = CODEX_TABS[(currentIndex + 1) % CODEX_TABS.length];
+    if (codexTab !== "EQUIPMENT") codexEquipmentView = "BASES";
     codexSelection = 0;
     draw();
     return;
@@ -2403,6 +2531,8 @@ document.addEventListener("keydown", (e) => {
     let i = keyIndex;
     let item = player.inventory[i];
     if (!item) return;
+    // The current generator builds one bounded chamber. This stays intentionally
+    // simple until biome layouts and tile effects are introduced in later phases.
     if (isMaterial(item)) {
       logAction("Merchant refuses materials. Try the guild.");
       draw();
@@ -2513,6 +2643,22 @@ document.addEventListener("keydown", (e) => {
   if (state === "CODEX") {
     let items = getCodexTabItems(codexTab);
     clampCodexSelection(items);
+
+    if (codexTab === "EQUIPMENT" && e.key === "ArrowRight") {
+      let currentIndex = CODEX_EQUIPMENT_VIEWS.indexOf(codexEquipmentView);
+      codexEquipmentView = CODEX_EQUIPMENT_VIEWS[(currentIndex + 1) % CODEX_EQUIPMENT_VIEWS.length];
+      codexSelection = 0;
+      draw();
+      return;
+    }
+
+    if (codexTab === "EQUIPMENT" && e.key === "ArrowLeft") {
+      let currentIndex = CODEX_EQUIPMENT_VIEWS.indexOf(codexEquipmentView);
+      codexEquipmentView = CODEX_EQUIPMENT_VIEWS[(currentIndex - 1 + CODEX_EQUIPMENT_VIEWS.length) % CODEX_EQUIPMENT_VIEWS.length];
+      codexSelection = 0;
+      draw();
+      return;
+    }
 
     if (e.key === "ArrowUp") {
       codexSelection = Math.max(0, codexSelection - 1);
