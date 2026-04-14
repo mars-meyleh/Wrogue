@@ -116,6 +116,35 @@ function logAction(message) {
   actionLog = actionLog.slice(0, 5);
 }
 
+function applyClassTheme() {
+  document.body.classList.remove("neutral-theme", "witch-theme", "orc-theme");
+  if (player.class === "witch") {
+    document.body.classList.add("witch-theme");
+    return;
+  }
+  if (player.class === "orc") {
+    document.body.classList.add("orc-theme");
+    return;
+  }
+  document.body.classList.add("neutral-theme");
+}
+
+function getClassFlavorHint() {
+  if (player.class === "witch") {
+    return '<span class="codex-meta">Witch rite: arcane dossier mode active.</span>';
+  }
+  if (player.class === "orc") {
+    return '<span class="codex-meta">Orc charter: guild war-ledger mode active.</span>';
+  }
+  return '<span class="codex-meta">Pick a class to attune your interface style.</span>';
+}
+
+function getCodexHeaderTitle() {
+  if (player.class === "witch") return "=== ARCANE DOSSIER ===";
+  if (player.class === "orc") return "=== GUILD WAR-LEDGER ===";
+  return "=== HUNTER'S CODEX ===";
+}
+
 function getNumberKeyIndex(e) {
   if (!isNaN(e.key)) return parseInt(e.key, 10);
   if (/^Digit[0-9]$/.test(e.code)) return parseInt(e.code.slice(5), 10);
@@ -1600,6 +1629,7 @@ function generateRoom() {
 
 // ===== DRAW =====
 function draw() {
+  applyClassTheme();
 
   if (state === "MENU") {
     let hasSave = !!localStorage.getItem("save");
@@ -1746,7 +1776,7 @@ HP: ${player.hp}
     clampCodexSelection(items);
     let selected = items[codexSelection] || null;
 
-    let text = '<span class="codex-title">=== HUNTER\'S CODEX ===</span>\n';
+    let text = `<span class="codex-title">${getCodexHeaderTitle()}</span>\n`;
     text += `${renderCodexTabBar()}\n\n`;
     text += `<span class="codex-section">-- ${codexTab} --</span>\n`;
 
@@ -1881,12 +1911,9 @@ HP: ${player.hp}
     output += "\n";
   }
 
-  output += `\nHP: ${player.hp}/${player.maxHp} | ATK: ${player.atk} | DEF: ${player.def}`;
-  output += `\nCRIT: ${player.crit}% | DODGE: ${player.dodge}%`;
-  output += `\n${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax} | Skill[Q]: ${getClassSkillName()} (2 ${player.resourceType})`;
+  output += `\nDungeon Floor: ${dungeon.floor}`;
   output += `\nCombat: ${player.inCombat ? '<span class="log-alert">ENGAGED</span>' : '<span class="codex-meta">idle</span>'}`;
-  output += `\nClass: ${player.class || "unknown"} | Gold: ${player.gold} | Turn: ${turn}`;
-
+  output += `\n${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax} | Skill[Q]: ${getClassSkillName()} (2 ${player.resourceType})`;
   output += `\nFloor: ${dungeon.floor}`;
   output += `\nRooms cleared: ${dungeon.roomsCleared}`;
   output += renderActionLog();
@@ -1907,7 +1934,7 @@ function drawUI() {
   text += `${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax}${player.inCombat ? " [combat]" : " [idle]"}\n`;
   text += `Combat: ${player.inCombat ? "ENGAGED" : "idle"}\n`;
   text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
-  text += `Gold: ${player.gold} | Turn: ${turn}\n\n`;
+  text += `Gold: ${player.gold}\n\n`;
   text += "=== EQUIPMENT ===\n";
 
   for (let [slot, item] of Object.entries(player.equipment)) {
@@ -1922,21 +1949,9 @@ function drawUI() {
     if (effectLine) text += `${effectLine}\n`;
   }
 
-  text += "\n=== INVENTORY ===\n";
-
-  player.inventory.forEach((item, i) => {
-    if (isMaterial(item)) {
-      normalizeMaterialStack(item);
-      text += `${i}: ${renderMaterialSpan(item)} `;
-      text += `<span class="codex-meta">[x${item.quantity} | ${item.value}g ea]</span>\n`;
-    } else {
-      text += `${i}: ${renderItemNameSpan(item)} `;
-      text += `<span class="codex-meta">[${item.type}/${item.slot}${item.part ? `/${item.part}` : ""}${item.hands === 2 ? "/2H" : ""}]</span> `;
-      text += `(+${item.atk}/${item.def}/${item.hp}/${item.crit}%/${item.dodge}%)\n`;
-      let effectLine = renderSpecialEffectLine(item);
-      if (effectLine) text += `${effectLine}\n`;
-    }
-  });
+  text += "\n=== HINTS ===\n";
+  text += `<span class="codex-meta">Inventory: C / I / Tab\nCodex: K</span>\n`;
+  text += `${getClassFlavorHint()}\n`;
 
   uiEl.innerHTML = text;
 }
