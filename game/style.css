@@ -1,0 +1,146 @@
+body {
+  background: black;
+  color: #d0d0d0;
+  font-family: "Courier New", monospace;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+#container {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+}
+
+#game {
+  font-size: 18px;
+  line-height: 1.2;
+  min-width: 320px;
+  width: 58ch;
+  min-height: 34em;
+  max-height: 34em;
+  overflow: hidden;
+}
+
+#ui {
+  font-size: 14px;
+  min-width: 220px;
+  width: 64ch;
+  min-height: 34em;
+  max-height: 34em;
+  overflow: hidden;
+}
+
+/* rarity colors */
+.common { color: #aaa; }
+.rare { color: #46d4ff; }
+.epic { color: #ff7ef3; }
+.legendary { color: #ffd24a; }
+.unique { color: #ff9d2e; font-weight: bold; }
+
+.unique-effect {
+  color: #ffb86a;
+}
+
+.tile-player {
+  color: #7ec8ff;
+  text-shadow: 0 0 8px rgba(126, 200, 255, 0.6);
+  font-weight: bold;
+}
+
+.tile-goblin {
+  color: #45d05f;
+  font-weight: bold;
+}
+
+.tile-chest {
+  color: #ffcf63;
+}
+
+.tile-chest-open {
+  color: #8a6d3b;
+}
+
+.tile-exit {
+  color: #ff8f5a;
+  font-weight: bold;
+}
+
+.codex-title {
+  color: #f3df9b;
+  font-weight: bold;
+}
+
+.codex-section {
+  color: #c8c2a4;
+  font-weight: bold;
+}
+
+.codex-meta {
+  color: #8f9388;
+}
+
+.codex-note {
+  color: #c6d1c7;
+}
+
+.log-heal {
+  color: #5fd37a;
+}
+
+.log-damage {
+  color: #ff6b6b;
+}
+
+.enemy-common {
+  color: #92b17d;
+}
+
+.enemy-goblin {
+  color: #45d05f;
+  font-weight: bold;
+}
+
+.enemy-corrupted {
+  color: #59c4e6;
+}
+
+.enemy-elite {
+  color: #d8d8d8;
+}
+
+.enemy-boss {
+  color: #ff6161;
+  font-weight: bold;
+}
+
+.enemy-rat {
+  color: #a08878;
+}
+
+.enemy-snake {
+  color: #b5d94e;
+  font-weight: bold;
+}
+
+.enemy-beetle {
+  color: #c49a3c;
+}
+
+.material-common {
+  color: #b89566;
+}
+
+.material-crafting {
+  color: #68d17c;
+}
+
+.material-rare {
+  color: #59b7ff;
+}
+
+.material-boss {
+  color: #ff6c6c;
+}
