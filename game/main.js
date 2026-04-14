@@ -144,6 +144,8 @@ function finishTurn(message, shouldLog = true) {
   } else if (regened) {
     logAction("Regen +1 HP.");
   }
+
+  runEnemyBehaviorTurn();
 }
 
 function getOpenPosition() {
@@ -172,6 +174,163 @@ function getOpenPosition() {
   }
 
   return { x: 1, y: 1 };
+}
+
+function getEnemyStateIcon(state) {
+  if (state === "ALERT") return "!";
+  if (state === "CHASE") return "»";
+  if (state === "ATTACK") return "*";
+  if (state === "RETURN") return "~";
+  return null;
+}
+
+function getEnemyDrawClass(enemyType, state) {
+  let base = ENEMY_DEFS[enemyType]?.colorClass || "enemy-common";
+  if (state === "ALERT") return `${base} enemy-alert`;
+  if (state === "CHASE") return `${base} enemy-chase`;
+  if (state === "ATTACK") return `${base} enemy-attack`;
+  if (state === "RETURN") return `${base} enemy-return`;
+  return base;
+}
+
+function getDistance(aX, aY, bX, bY) {
+  return Math.abs(aX - bX) + Math.abs(aY - bY);
+}
+
+function isWalkableTile(x, y) {
+  if (!map[y] || !map[y][x]) return false;
+  if (map[y][x] === "#") return false;
+  return true;
+}
+
+function isOccupiedByBlockingEntity(x, y, ignoreEntity = null) {
+  return entities.some(e => e !== ignoreEntity && e.x === x && e.y === y && e.type !== "chest");
+}
+
+function canEnemyMoveTo(enemy, x, y) {
+  if (!isWalkableTile(x, y)) return false;
+  if (player.x === x && player.y === y) return false;
+  if (isOccupiedByBlockingEntity(x, y, enemy)) return false;
+  return true;
+}
+
+function tryMoveEnemy(enemy, dx, dy) {
+  let nx = enemy.x + dx;
+  let ny = enemy.y + dy;
+  if (!canEnemyMoveTo(enemy, nx, ny)) return false;
+  enemy.x = nx;
+  enemy.y = ny;
+  return true;
+}
+
+function tryMoveEnemyToward(enemy, targetX, targetY) {
+  let options = [];
+  let dx = targetX - enemy.x;
+  let dy = targetY - enemy.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    options.push({ x: Math.sign(dx), y: 0 });
+    options.push({ x: 0, y: Math.sign(dy) });
+  } else {
+    options.push({ x: 0, y: Math.sign(dy) });
+    options.push({ x: Math.sign(dx), y: 0 });
+  }
+
+  options.push({ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 });
+
+  for (let step of options) {
+    if (step.x === 0 && step.y === 0) continue;
+    if (tryMoveEnemy(enemy, step.x, step.y)) return true;
+  }
+  return false;
+}
+
+function runEnemyBehaviorTurn() {
+  if (state !== "DUNGEON") return;
+
+  let enemyEvents = [];
+  let alertRange = 4;
+  let chaseRange = 2;
+  let dropChaseRange = 6;
+
+  for (let enemy of entities) {
+    if (!ENEMY_DEFS[enemy.type]) continue;
+
+    if (!enemy.state) enemy.state = "IDLE";
+    if (enemy.spawnX === undefined || enemy.spawnY === undefined) {
+      enemy.spawnX = enemy.x;
+      enemy.spawnY = enemy.y;
+    }
+    if (enemy.alertTurns === undefined) enemy.alertTurns = 0;
+
+    let distToPlayer = getDistance(enemy.x, enemy.y, player.x, player.y);
+    let previousState = enemy.state;
+
+    if (enemy.state === "IDLE") {
+      if (distToPlayer <= alertRange) {
+        enemy.state = "ALERT";
+        enemy.alertTurns = 2;
+      } else if (Math.random() < 0.35) {
+        let directions = [
+          { x: 1, y: 0 },
+          { x: -1, y: 0 },
+          { x: 0, y: 1 },
+          { x: 0, y: -1 }
+        ];
+        let pick = directions[rand(0, directions.length - 1)];
+        let nx = enemy.x + pick.x;
+        let ny = enemy.y + pick.y;
+
+        if (Math.abs(nx - enemy.spawnX) <= 2 && Math.abs(ny - enemy.spawnY) <= 2) {
+          tryMoveEnemy(enemy, pick.x, pick.y);
+        }
+      }
+    } else if (enemy.state === "ALERT") {
+      if (distToPlayer <= chaseRange) {
+        enemy.state = "CHASE";
+      } else if (distToPlayer <= alertRange) {
+        enemy.alertTurns = 2;
+      } else {
+        enemy.alertTurns--;
+        if (enemy.alertTurns <= 0) enemy.state = "RETURN";
+      }
+    } else if (enemy.state === "CHASE") {
+      if (distToPlayer === 1) {
+        enemy.state = "ATTACK";
+      } else if (distToPlayer > dropChaseRange) {
+        enemy.state = "RETURN";
+      } else {
+        tryMoveEnemyToward(enemy, player.x, player.y);
+        let postMoveDist = getDistance(enemy.x, enemy.y, player.x, player.y);
+        if (postMoveDist === 1) enemy.state = "ATTACK";
+      }
+    } else if (enemy.state === "ATTACK") {
+      if (distToPlayer > dropChaseRange) enemy.state = "RETURN";
+      else enemy.state = "CHASE";
+    } else if (enemy.state === "RETURN") {
+      let atHome = enemy.x === enemy.spawnX && enemy.y === enemy.spawnY;
+      if (!atHome) {
+        tryMoveEnemyToward(enemy, enemy.spawnX, enemy.spawnY);
+      }
+
+      atHome = enemy.x === enemy.spawnX && enemy.y === enemy.spawnY;
+      if (atHome) {
+        enemy.hp = enemy.maxHp;
+        enemy.state = "IDLE";
+      }
+    }
+
+    if (previousState !== enemy.state) {
+      let enemyName = ENEMY_DEFS[enemy.type].name;
+      if (enemy.state === "ALERT") enemyEvents.push(`${enemyName} noticed you!`);
+      if (enemy.state === "CHASE") enemyEvents.push(`${enemyName} is pursuing you.`);
+      if (enemy.state === "RETURN") enemyEvents.push(`${enemyName} lost your trail.`);
+    }
+  }
+
+  for (let evt of enemyEvents) {
+    logAction(evt);
+  }
 }
 
 const ITEM_GENERATION_POOL = [
@@ -487,6 +646,10 @@ function spawnEnemy(type, x, y) {
   let entity = {
     type,
     x, y,
+    spawnX: x,
+    spawnY: y,
+    state: "IDLE",
+    alertTurns: 0,
     hp,
     maxHp: hp,
     atk: def.atk + Math.floor(dungeon.floor / 2),
@@ -1221,7 +1384,10 @@ HP: ${player.hp}
         if (e.x === x && e.y === y) {
           let eDef = ENEMY_DEFS[e.type];
           if (eDef) {
-            output += `<span class="${eDef.colorClass}">${eDef.symbol}</span>`;
+            let icon = getEnemyStateIcon(e.state);
+            let drawSymbol = icon || eDef.symbol;
+            let drawClass = getEnemyDrawClass(e.type, e.state);
+            output += `<span class="${drawClass}">${drawSymbol}</span>`;
           } else if (e.type === "chest" && !e.opened) {
             output += '<span class="tile-chest">□</span>';
           } else if (e.type === "chest" && e.opened) {
