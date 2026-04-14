@@ -197,6 +197,87 @@ function normalizeWorldState(savedWorld) {
   };
 }
 
+function hasWorldMilestone(id) {
+  return world.milestones.completed.includes(id);
+}
+
+function refreshTownProgression() {
+  let completed = world.milestones.completed;
+  let town = world.town;
+
+  town.rebuildTier = 0;
+  town.districtState = "ruined";
+  town.playerHomeUnlocked = false;
+  town.merchantGuildUnlocked = false;
+  town.contractBoardUnlocked = false;
+
+  if (completed.includes("first_warden_felled")) {
+    town.rebuildTier = 1;
+    town.districtState = "repairing";
+    town.playerHomeUnlocked = true;
+  }
+
+  if (completed.includes("deep_paths_opened")) {
+    town.rebuildTier = 2;
+    town.districtState = "restored";
+    town.playerHomeUnlocked = true;
+    town.merchantGuildUnlocked = true;
+  }
+
+  if (completed.includes("guild_attention_earned")) {
+    town.rebuildTier = 3;
+    town.districtState = "thriving";
+    town.playerHomeUnlocked = true;
+    town.merchantGuildUnlocked = true;
+    town.contractBoardUnlocked = true;
+  }
+}
+
+function completeWorldMilestone(id, message) {
+  if (hasWorldMilestone(id)) return false;
+  world.milestones.completed.push(id);
+  refreshTownProgression();
+  if (message) logAction(message);
+  return true;
+}
+
+function recordDeepestFloor() {
+  let biomeId = world.biomeProgress.activeBiome;
+  let current = world.biomeProgress.deepestFloorByBiome[biomeId] || 0;
+  world.biomeProgress.deepestFloorByBiome[biomeId] = Math.max(current, dungeon.floor);
+
+  if (dungeon.floor >= 4) {
+    completeWorldMilestone("deep_paths_opened", "Ashroot stirs as the deeper paths begin to yield.");
+  }
+  if (dungeon.floor >= 7) {
+    completeWorldMilestone("guild_attention_earned", "Word spreads beyond Ashroot. The guild begins preparing outside requests.");
+  }
+}
+
+function getTownHeading() {
+  return {
+    ruined: "=== ASHROOT: RUIN EDGE ===",
+    repairing: "=== ASHROOT: REBUILDING ===",
+    restored: "=== ASHROOT: LANTERN DISTRICT ===",
+    thriving: "=== ASHROOT: GROWING HOLD ==="
+  }[world.town.districtState] || "=== ASHROOT HUB ===";
+}
+
+function getMerchantMenuLabel() {
+  return world.town.merchantGuildUnlocked ? "Merchant Guild" : "Merchant";
+}
+
+function getGuildMenuLabel() {
+  return world.town.contractBoardUnlocked ? "Guild Board" : "Guild";
+}
+
+function getTownStatusNote() {
+  if (world.town.districtState === "ruined") return "Collapsed homes lean over the square, but the lanterns still hold.";
+  if (world.town.districtState === "repairing") return "Fresh timber and stitched canvas mark the first signs of return.";
+  if (world.town.districtState === "restored") return "Trade stalls and watchfires make Ashroot look lived in again.";
+  return "Caravans, contracts, and rumor now gather where only ash once settled.";
+}
+
 function rand(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -491,6 +572,9 @@ function collectEnemyRewards(enemy, eDef) {
   entities = entities.filter(en => en !== enemy);
 
   if (codex.enemies[enemy.type]) codex.enemies[enemy.type].kills++;
+  if (enemy.type === "stone_beetle" || enemy.type === "dungeon_guard") {
+    completeWorldMilestone("first_warden_felled", "Ashroot hears of a warden's fall. Work crews dare to rebuild by lanternlight.");
+  }
 
   let lootLine = ` ✸ ${eDef.name} defeated.`;
   let drops = rollEnemyDrops(enemy.type);
@@ -1844,6 +1928,7 @@ function loadGame() {
   };
 
   world = normalizeWorldState(save.world);
+  refreshTownProgression();
 
   if (save.codex) {
     codex = {
@@ -1887,6 +1972,7 @@ function loadGame() {
 
   calculateStats();
   initClassResource(false);
+  recordDeepestFloor();
   player.inCombat = false;
   player.hp = Math.min(player.hp || player.maxHp, player.maxHp);
   player.inventory = player.inventory.map(item => isMaterial(item) ? normalizeMaterialStack(item) : normalizeGearItem(item));
@@ -1902,7 +1988,10 @@ function loadGame() {
 function enterTown(message = "Returned to town.") {
   state = "TOWN";
   player.inCombat = false;
+  player.hp = player.maxHp;
+  player.resourceCurrent = player.resourceMax;
   logAction(message);
+  logAction("You rest under Ashroot's lanterns and recover your strength.");
   setAtmosphereBanner("town");
   saveGame();
 }
@@ -1946,6 +2035,8 @@ function startGame() {
   initClassResource(true);
   player.inCombat = false;
   calculateStats();
+  refreshTownProgression();
+  recordDeepestFloor();
   saveGame();
 }
 
@@ -2126,15 +2217,17 @@ Kill what you find. Loot what you can. Come back alive.</span>
 [TOWN]
 
 1. Enter Dungeon
-2. Merchant
+2. ${getMerchantMenuLabel()}
 3. Blacksmith
-4. Guild
+4. ${getGuildMenuLabel()}
 C. Inventory
 K. Codex
 M. Main Menu
 
 Gold: ${player.gold}
 HP: ${player.hp}
+Town Tier: ${world.town.rebuildTier}  [${world.town.districtState}]
+${getTownStatusNote()}
 `;
   if (atmosphereBanner) {
     gameEl.innerHTML += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
@@ -2145,7 +2238,7 @@ HP: ${player.hp}
   }
 
   if (state === "MERCHANT") {
-    let text = "[MERCHANT]\nSell items:\n";
+    let text = `[${getMerchantMenuLabel().toUpperCase()}]\nSell items:\n`;
     player.inventory.forEach((item, i) => {
       if (isMaterial(item)) return;
       text += `${i}: ${renderItemNameSpan(item)} `;
@@ -2195,13 +2288,18 @@ HP: ${player.hp}
   }
 
   if (state === "GUILD") {
-    let text = "[GUILD]\nSell monster materials:\n";
+    let text = `[${getGuildMenuLabel().toUpperCase()}]\nSell monster materials:\n`;
     player.inventory.forEach((item, i) => {
       if (!isMaterial(item)) return;
       normalizeMaterialStack(item);
       text += `${i}: ${renderMaterialSpan(item)} x${item.quantity} `;
       text += `<span class=\"codex-meta\">(${item.tier}, ${item.value}g ea / ${item.totalValue}g total)</span>\n`;
     });
+    if (world.town.contractBoardUnlocked) {
+      text += "\n<span class=\"codex-note\">Requests are beginning to arrive from beyond Ashroot, but the board is not active yet.</span>\n";
+    } else {
+      text += "\n<span class=\"codex-meta\">The guild still operates as a rough buying counter and rumor desk.</span>\n";
+    }
     text += "\n[number] sell 1 | Shift+[number] sell stack\nESC to exit";
     text += renderActionLog();
     gameEl.innerHTML = text;
@@ -2325,10 +2423,15 @@ HP: ${player.hp}
 // ===== SIDE PANEL UI =====
 function drawUI() {
   if (state === "TOWN") {
-    let text = `=== ASHROOT HUB ===\n`;
+    let text = `${getTownHeading()}\n`;
     text += `HP: ${player.hp}/${player.maxHp}\n`;
     text += `Gold: ${player.gold}\n`;
     text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
+    text += `Rebuild: Tier ${world.town.rebuildTier} [${world.town.districtState}]\n`;
+    text += `Home: ${world.town.playerHomeUnlocked ? "open" : "not ready"}\n`;
+    text += `Trade: ${world.town.merchantGuildUnlocked ? "merchant guild forming" : "single merchant stall"}\n`;
+    text += `Guild: ${world.town.contractBoardUnlocked ? "board prepared" : "buyers' desk only"}\n`;
+    text += `\n${getTownStatusNote()}\n`;
     if (atmosphereBanner) text += `\n<span class="flow-banner">${atmosphereBanner}</span>\n`;
     uiEl.innerHTML = text;
     return;
@@ -2866,6 +2969,7 @@ document.addEventListener("keydown", (e) => {
 
   if (dungeon.roomsCleared % 3 === 0) {
     dungeon.floor++;
+    recordDeepestFloor();
     logAction(`Advanced to floor ${dungeon.floor}.`);
   }
 
