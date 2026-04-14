@@ -110,6 +110,14 @@ body {
   color: #8f9388;
 }
 
+.log-arcane {
+  color: #59e6e6;
+}
+
+.log-physical {
+  color: #ffcc66;
+}
+
 .enemy-common {
   color: #92b17d;
 }
@@ -161,6 +169,47 @@ body {
 
 .enemy-return {
   opacity: 0.7;
+}
+
+.enemy-elite-mark {
+  font-weight: bold;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.25);
+}
+
+@keyframes tileFlash {
+  0%   { opacity: 1; }
+  35%  { opacity: 0.08; }
+  100% { opacity: 1; }
+}
+
+.tile-hit-fire {
+  animation: tileFlash 0.28s ease;
+  color: #ff5f3f !important;
+  text-shadow: 0 0 8px #ff3300;
+}
+
+.tile-hit-arcane {
+  animation: tileFlash 0.28s ease;
+  color: #59e6e6 !important;
+  text-shadow: 0 0 8px #00ccff;
+}
+
+.tile-hit-frost {
+  animation: tileFlash 0.28s ease;
+  color: #a0c8f0 !important;
+  text-shadow: 0 0 8px #6699ff;
+}
+
+.tile-hit-physical {
+  animation: tileFlash 0.28s ease;
+  color: #ffcc66 !important;
+  text-shadow: 0 0 8px #ff9900;
+}
+
+.tile-hit-poison {
+  animation: tileFlash 0.28s ease;
+  color: #7bdb4e !important;
+  text-shadow: 0 0 8px #44aa00;
 }
 
 .material-common {

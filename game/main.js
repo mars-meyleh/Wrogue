@@ -8,7 +8,10 @@ let inventoryReturnState = "TOWN";
 let codexReturnState = "TOWN";
 let inventoryTab = "GEAR";
 let inventorySelection = 0;
+let codexTab = "CREATURES";
+let codexSelection = 0;
 let showActionLog = true;
+let visualFlash = null;
 let codex = { enemies: {}, materials: {}, equipment: {}, lore: [] };
 
 let dungeon = {
@@ -51,6 +54,53 @@ let entities = [];
 
 const WIDTH = Math.floor(8 * 2.5);
 const HEIGHT = Math.floor(5 * 2.5);
+const CODEX_TABS = ["CREATURES", "MATERIALS", "EQUIPMENT", "TOWN", "LORE"];
+const CODEX_TOWN_ENTRIES = [
+  {
+    title: "Ashroot",
+    className: "codex-section",
+    summary: "Frontier town above the Wrogue.",
+    detail: "Ashroot survives by trade, scavenging, and the hunters willing to descend below it."
+  },
+  {
+    title: "Merchant",
+    className: "codex-note",
+    summary: "Buys found gear for gold.",
+    detail: "The merchant cares about salvage value, rarity, and whether the item can be flipped to another hunter."
+  },
+  {
+    title: "Blacksmith",
+    className: "codex-note",
+    summary: "Improves worn equipment.",
+    detail: "The blacksmith turns gold into durability and edge. Later, crafting hooks can live here too."
+  },
+  {
+    title: "Guild",
+    className: "codex-note",
+    summary: "Pays for monster materials.",
+    detail: "The guild tracks proof of work, purchases raw materials, and will eventually tie into contracts and requests."
+  }
+];
+const CODEX_LORE_ENTRIES = [
+  {
+    title: "First Arrival",
+    className: "codex-section",
+    summary: "You came to Ashroot under contract.",
+    detail: "A guild contract, a rough weapon, and the promise of pay were enough to bring you to the mouth of the Wrogue."
+  },
+  {
+    title: "Guild Contract",
+    className: "codex-note",
+    summary: "Kill, loot, and return alive.",
+    detail: "The terms are simple: descend, recover valuables, document threats, and make it back to town breathing."
+  },
+  {
+    title: "Dungeon Notes",
+    className: "codex-note",
+    summary: "The lower ruins are still unwritten.",
+    detail: "This tab is ready for future journal entries, discovered notes, and unique-item lore connections."
+  }
+];
 
 // ===== UTIL =====
 function rand(min, max) {
@@ -115,7 +165,9 @@ function getLogLineClass(message) {
   if (/regen \+1 hp|healed|restored/i.test(plain)) return "log-heal";
   if (/strikes you for|ambushes you for|you were defeated/i.test(plain)) return "log-damage";
   if (/took \d+ damage/i.test(plain)) return "log-damage";
-  if (/critical hit|hit .+ for \d+|hex bolt|cleave|defeated\.|\[\/\]|·→\*/i.test(plain)) return "log-kill";
+  if (/✸|defeated\./i.test(plain)) return "log-kill";
+  if (/·→\*/i.test(plain)) return "log-arcane";
+  if (/\[\/\]|critical hit/i.test(plain)) return "log-physical";
   if (/noticed you|is pursuing you|lost your trail/i.test(plain)) return "log-alert";
   if (/you dodge|dodged .+ambush/i.test(plain)) return "log-dodge";
   if (/fled wounded/i.test(plain)) return "log-flee";
@@ -205,6 +257,23 @@ function getEnemyDrawClass(enemyType, state) {
 
 function getDistance(aX, aY, bX, bY) {
   return Math.abs(aX - bX) + Math.abs(aY - bY);
+}
+
+function triggerFlash(x, y, element) {
+  visualFlash = { x, y, element };
+  setTimeout(() => {
+    visualFlash = null;
+    if (state === "DUNGEON") draw();
+  }, 280);
+}
+
+function getAttackElement() {
+  let sub = player.equipment.mainHand?.subType;
+  if (sub === "blade")  return "fire";
+  if (sub === "heavy")  return "physical";
+  if (sub === "arcane") return "arcane";
+  if (sub === "focus")  return "frost";
+  return player.class === "orc" ? "physical" : "arcane";
 }
 
 function getClassResourceType() {
@@ -300,6 +369,7 @@ function useWitchHexBolt() {
   if (target.hp <= 0) {
     line += collectEnemyRewards(target, eDef);
   } else {
+    triggerFlash(target.x, target.y, "arcane");
     target.state = "CHASE";
     target.alertTurns = 2;
   }
@@ -351,6 +421,7 @@ function useOrcRush() {
     if (target.hp <= 0) {
       line += collectEnemyRewards(target, eDef);
     } else {
+      triggerFlash(target.x, target.y, "physical");
       target.state = "ATTACK";
       target.alertTurns = 2;
     }
@@ -815,6 +886,40 @@ const ENEMY_DEFS = {
       { id: "stone_dust",   chance: 1 },
       { id: "chitin_plate", chance: 0.6 }
     ]
+  },
+  dungeon_guard: {
+    name: "Dungeon Guard",
+    symbol: "G",
+    family: "Dungeon Wardens",
+    colorClass: "enemy-elite",
+    hp: 10, atk: 3, def: 3,
+    behavior: {},
+    lore: [
+      { kills: 0,  text: "A hulking warden posted at the threshold of deeper ruins." },
+      { kills: 5,  text: "Old armor, strong arms. Not clever, but doesn't need to be." },
+      { kills: 12, text: "The guild pays a premium for warden-class chitin and plate." }
+    ],
+    drops: [
+      { id: "chitin_plate", chance: 0.80 },
+      { id: "scrap_metal",  chance: 0.50 }
+    ]
+  },
+  shadow_stalker: {
+    name: "Shadow Stalker",
+    symbol: "S",
+    family: "Deep Dwellers",
+    colorClass: "enemy-corrupted",
+    hp: 7, atk: 4, def: 0,
+    behavior: { firstStrike: true },
+    lore: [
+      { kills: 0,  text: "A predator born from the dark between floors. Moves first." },
+      { kills: 4,  text: "Its venomous coil leaves hunters weaker long after the bite." },
+      { kills: 10, text: "Deep hunters carry antidotes. The rest don't come back." }
+    ],
+    drops: [
+      { id: "bone_fragment", chance: 1 },
+      { id: "venom_sac",     chance: 0.35 }
+    ]
   }
 };
 
@@ -857,21 +962,158 @@ function renderMaterialSpan(item) {
   return `<span class="${colorClass}">${item.name}</span>`;
 }
 
+function getRarityOrder(rarity) {
+  return {
+    unique: 5,
+    legendary: 4,
+    epic: 3,
+    rare: 2,
+    common: 1
+  }[rarity] || 0;
+}
+
+function getCodexTabItems(tab) {
+  if (tab === "CREATURES") {
+    return Object.entries(codex.enemies)
+      .map(([key, entry]) => ({ key, ...entry }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  if (tab === "MATERIALS") {
+    let tierOrder = { boss: 4, rare: 3, crafting: 2, common: 1 };
+    return Object.entries(codex.materials)
+      .map(([key, entry]) => ({ key, ...entry }))
+      .sort((a, b) => {
+        let tierDiff = (tierOrder[b.tier] || 0) - (tierOrder[a.tier] || 0);
+        if (tierDiff !== 0) return tierDiff;
+        return a.name.localeCompare(b.name);
+      });
+  }
+
+  if (tab === "EQUIPMENT") {
+    return Object.entries(codex.equipment)
+      .map(([key, entry]) => ({ key, ...entry }))
+      .sort((a, b) => {
+        let uniqueDiff = Number(b.rarity === "unique") - Number(a.rarity === "unique");
+        if (uniqueDiff !== 0) return uniqueDiff;
+        let rarityDiff = getRarityOrder(b.rarity) - getRarityOrder(a.rarity);
+        if (rarityDiff !== 0) return rarityDiff;
+        return (a.name || "").localeCompare(b.name || "");
+      });
+  }
+
+  if (tab === "TOWN") return CODEX_TOWN_ENTRIES;
+  if (tab === "LORE") return CODEX_LORE_ENTRIES;
+  return [];
+}
+
+function clampCodexSelection(items) {
+  if (!items.length) {
+    codexSelection = 0;
+    return;
+  }
+  codexSelection = Math.max(0, Math.min(items.length - 1, codexSelection));
+}
+
+function renderCodexRow(entry, tab, isSelected) {
+  let marker = isSelected ? "→ " : "  ";
+
+  if (tab === "CREATURES") {
+    let colorClass = entry.colorClass || "enemy-common";
+    let symbol = entry.symbol || "?";
+    return `${marker}<span class="${colorClass}">${symbol} ${entry.name}</span> <span class="codex-meta">[${entry.family}] seen:${entry.seen} kills:${entry.kills}</span>`;
+  }
+
+  if (tab === "MATERIALS") {
+    let colorClass = entry.colorClass || "material-common";
+    return `${marker}<span class="${colorClass}">${entry.name}</span> <span class="codex-meta">[${entry.tier}]</span>`;
+  }
+
+  if (tab === "EQUIPMENT") {
+    let rarity = entry.rarity || "common";
+    let quality = rarity === "unique" ? "relic" : `${getStarDisplay(Math.max(1, entry.bestStars || 0)).trim() || "★"}`;
+    let brief = rarity === "unique"
+      ? "lore relic"
+      : `+${entry.bestAtk || 0} ATK / +${entry.bestDef || 0} DEF`;
+    return `${marker}<span class="${rarity}">${entry.name}</span> <span class="codex-meta">${rarity} ${quality} ${brief}</span>`;
+  }
+
+  let className = entry.className || "codex-note";
+  return `${marker}<span class="${className}">${entry.title}</span> <span class="codex-meta">${entry.summary}</span>`;
+}
+
+function renderCodexDetail(entry, tab) {
+  if (!entry) return '<span class="codex-meta">Nothing recorded yet.</span>';
+
+  if (tab === "CREATURES") {
+    let colorClass = entry.colorClass || "enemy-common";
+    let lore = getEnemyLore(entry.key, entry);
+    return `<span class="${colorClass}">${entry.name}</span> <span class="codex-meta">[${entry.family}]</span>\n`
+      + `<span class="codex-meta">seen: ${entry.seen} | kills: ${entry.kills}</span>\n`
+      + `<span class="codex-note">"${lore}"</span>`;
+  }
+
+  if (tab === "MATERIALS") {
+    let colorClass = entry.colorClass || "material-common";
+    return `<span class="${colorClass}">${entry.name}</span> <span class="codex-meta">[${entry.tier}]</span>\n`
+      + `<span class="codex-note">${entry.uses}</span>`;
+  }
+
+  if (tab === "EQUIPMENT") {
+    let rarity = entry.rarity || "common";
+    let qualityText = rarity === "unique"
+      ? "quality: unique"
+      : `best quality: ${"★".repeat(Math.max(1, entry.bestStars || 0))}`;
+    let typeLine = rarity === "unique"
+      ? `<span class="codex-meta">ancient item record</span>`
+      : `<span class="codex-meta">${entry.type} [${entry.slot}]${entry.hands === 2 ? " 2H" : ""}</span>`;
+    let effectLine = entry.specialEffect
+      ? `\n<span class="unique-effect">effect: ${entry.specialEffect}</span>`
+      : "";
+    return `<span class="${rarity}">${entry.name}</span>\n`
+      + `${typeLine}\n`
+      + `<span class="codex-meta">seen: ${entry.seen} | equipped: ${entry.equipped}</span>\n`
+      + `<span class="codex-note">best rolls: +${entry.bestAtk || 0} ATK / +${entry.bestDef || 0} DEF | ${qualityText}</span>`
+      + effectLine;
+  }
+
+  return `<span class="${entry.className || "codex-note"}">${entry.title}</span>\n`
+    + `<span class="codex-meta">${entry.summary}</span>\n`
+    + `<span class="codex-note">${entry.detail}</span>`;
+}
+
+function renderCodexTabBar() {
+  let parts = CODEX_TABS.map(tab => codexTab === tab ? `► ${tab}` : tab);
+  return `<span class="codex-meta">[Tab] ${parts.join(" | ")}</span>`;
+}
+
 function getEnemyPool() {
-  if (dungeon.floor <= 2) return ["rat", "goblin"];
-  if (dungeon.floor <= 4) return ["rat", "goblin", "cave_snake"];
-  return ["goblin", "cave_snake", "stone_beetle"];
+  if (dungeon.floor <= 2)  return ["rat", "goblin"];
+  if (dungeon.floor <= 4)  return ["rat", "goblin", "cave_snake"];
+  if (dungeon.floor <= 6)  return ["goblin", "cave_snake", "stone_beetle", "dungeon_guard"];
+  if (dungeon.floor <= 8)  return ["cave_snake", "stone_beetle", "dungeon_guard"];
+  return ["stone_beetle", "dungeon_guard", "shadow_stalker"];
 }
 
 function getEnemyCount() {
   if (dungeon.floor === 1) return rand(1, 2);
-  if (dungeon.floor <= 3) return rand(1, 3);
-  return rand(2, 3);
+  if (dungeon.floor <= 3)  return rand(2, 3);
+  if (dungeon.floor <= 6)  return rand(2, 4);
+  return rand(3, 5);
 }
 
 function spawnEnemy(type, x, y) {
   let def = ENEMY_DEFS[type];
   let hp = def.hp + (dungeon.floor - 1) * 2;
+  let atk = def.atk + Math.floor(dungeon.floor * 0.65);
+  let defStat = def.def + Math.floor((dungeon.floor - 1) / 3);
+
+  let elite = dungeon.floor >= 5 && Math.random() < 0.20;
+  if (elite) {
+    hp = Math.round(hp * 1.6);
+    atk = Math.round(atk * 1.4);
+  }
+
   let entity = {
     type,
     x, y,
@@ -881,8 +1123,9 @@ function spawnEnemy(type, x, y) {
     alertTurns: 0,
     hp,
     maxHp: hp,
-    atk: def.atk + Math.floor(dungeon.floor / 2),
-    def: def.def
+    atk,
+    def: defStat,
+    elite
   };
   if (def.behavior?.firstStrike) entity.firstHit = true;
   return entity;
@@ -970,21 +1213,40 @@ function rollBaseRarityByFloor() {
   let floor = dungeon.floor;
   let roll = Math.random();
 
-  if (floor <= 2) {
-    if (roll < 0.7) return "common";
-    if (roll < 0.95) return "rare";
+  if (floor === 1) {
+    return roll < 0.97 ? "common" : "rare";
+  }
+  if (floor === 2) {
+    return roll < 0.90 ? "common" : "rare";
+  }
+  if (floor <= 4) {
+    if (roll < 0.72) return "common";
+    if (roll < 0.96) return "rare";
     return "epic";
   }
-  if (floor <= 5) {
-    if (roll < 0.45) return "common";
-    if (roll < 0.8) return "rare";
-    if (roll < 0.96) return "epic";
+  if (floor <= 7) {
+    if (roll < 0.50) return "common";
+    if (roll < 0.84) return "rare";
+    if (roll < 0.98) return "epic";
     return "legendary";
   }
-  if (roll < 0.2) return "common";
-  if (roll < 0.55) return "rare";
-  if (roll < 0.85) return "epic";
+  if (floor <= 10) {
+    if (roll < 0.28) return "common";
+    if (roll < 0.68) return "rare";
+    if (roll < 0.93) return "epic";
+    return "legendary";
+  }
+  if (roll < 0.12) return "common";
+  if (roll < 0.47) return "rare";
+  if (roll < 0.82) return "epic";
   return "legendary";
+}
+
+function maxStarsByFloor() {
+  if (dungeon.floor <= 2) return 2;
+  if (dungeon.floor <= 5) return 3;
+  if (dungeon.floor <= 8) return 4;
+  return 5;
 }
 
 function createUniqueItem() {
@@ -1029,8 +1291,7 @@ function maybeRollUniqueFromChest() {
 }
 
 function maybeRollUniqueFromEnemy(enemyType) {
-  // Until explicit bosses exist, stone beetles on deep floors act as boss-like unique sources.
-  let isBossLike = enemyType === "stone_beetle";
+  let isBossLike = enemyType === "stone_beetle" || enemyType === "dungeon_guard";
   if (!isBossLike || dungeon.floor < 8) return null;
   let chance = Math.min(0.1, 0.03 + (dungeon.floor - 8) * 0.01);
   return Math.random() < chance ? createUniqueItem() : null;
@@ -1095,7 +1356,7 @@ function generateItem(rarity) {
   let template = ITEM_GENERATION_POOL[rand(0, ITEM_GENERATION_POOL.length - 1)];
 
   let power = rarityPower[rarity] + Math.floor((dungeon.floor - 1) / 2);
-  let stars = rand(1, 5);
+  let stars = rand(1, maxStarsByFloor());
   const starMultiplier = {
     1: 0.65,
     2: 0.82,
@@ -1425,12 +1686,12 @@ Kill what you find. Loot what you can. Come back alive.</span>
 `<span class="codex-title">[SETTINGS]</span>
 
 <span class="codex-section">-- Key Bindings --</span>
-<span class="codex-note">  Arrows    Move / Navigate inventory
+<span class="codex-note">  Arrows    Move / Navigate inventory or codex
   Enter     Confirm / Equip
   Q         Class skill (combat only)
   K         Toggle codex
   L         Toggle action log
-  Tab       Switch inventory tab / Open inventory
+  Tab       Switch tabs / Open inventory
   C / I     Open inventory (dungeon)
   X         Return to town (dungeon)
   M         Main menu (town)
@@ -1480,54 +1741,25 @@ HP: ${player.hp}
   }
 
   if (state === "CODEX") {
-    let text = '<span class="codex-title">=== HUNTER\'S CODEX ===</span>\n\n';
+    let items = getCodexTabItems(codexTab);
+    clampCodexSelection(items);
+    let selected = items[codexSelection] || null;
 
-    text += '<span class="codex-section">-- Creatures --</span>\n';
-    for (let key in codex.enemies) {
-      let en = codex.enemies[key];
-      let lore = getEnemyLore(key, en);
-      let colorClass = en.colorClass || "enemy-common";
-      let symbol = en.symbol || "?";
-      text += `<span class="${colorClass}">${symbol}</span> `;
-      text += `<span class="${colorClass}">${en.name}</span> `;
-      text += `<span class="codex-meta">[${en.family}]</span>\n`;
-      text += `<span class="codex-meta">seen: ${en.seen} | kills: ${en.kills}</span>\n`;
-      text += `  <span class="codex-note">"${lore}"</span>\n`;
+    let text = '<span class="codex-title">=== HUNTER\'S CODEX ===</span>\n';
+    text += `${renderCodexTabBar()}\n\n`;
+    text += `<span class="codex-section">-- ${codexTab} --</span>\n`;
+
+    if (!items.length) {
+      text += '<span class="codex-meta">Nothing recorded yet.</span>\n';
+    } else {
+      items.forEach((entry, index) => {
+        text += `${renderCodexRow(entry, codexTab, index === codexSelection)}\n`;
+      });
     }
 
-    if (!Object.keys(codex.enemies).length) text += '<span class="codex-meta">Nothing recorded yet.</span>\n';
-
-    text += '\n<span class="codex-section">-- Materials --</span>\n';
-    for (let key in codex.materials) {
-      let m = codex.materials[key];
-      let colorClass = m.colorClass || "material-common";
-      text += `<span class="${colorClass}">${m.name}</span> `;
-      text += `<span class="codex-meta">[${m.tier}]</span>\n`;
-      text += `  <span class="codex-note">"${m.uses}"</span>\n`;
-    }
-
-    if (!Object.keys(codex.materials).length) text += '<span class="codex-meta">Nothing collected yet.</span>\n';
-
-    text += '\n<span class="codex-section">-- Equipment --</span>\n';
-    for (let key in codex.equipment) {
-      let eq = codex.equipment[key];
-      text += `<span class="${eq.rarity || "common"}">${eq.name || `${eq.type} [${eq.slot}]`}</span> <span class="codex-meta">`;
-      if (eq.rarity !== "unique") {
-        text += `${eq.type} [${eq.slot}]`;
-        if (eq.part) text += ` part:${eq.part}`;
-        if (eq.hands === 2) text += " 2H";
-      }
-      text += ` | seen: ${eq.seen}, equipped: ${eq.equipped}</span>\n`;
-      let qualityText = eq.rarity === "unique" ? "best quality: unique" : `best quality: ${"★".repeat(Math.max(1, eq.bestStars || 0))}`;
-      text += `  <span class="codex-note">best rolls: +${eq.bestAtk} ATK / +${eq.bestDef} DEF | ${qualityText}</span>\n`;
-      if (eq.specialEffect) {
-        text += `  <span class="unique-effect">effect: ${eq.specialEffect}</span>\n`;
-      }
-    }
-
-    if (!Object.keys(codex.equipment).length) text += '<span class="codex-meta">No gear data yet.</span>\n';
-
-    text += '\n<span class="codex-meta">ESC to exit</span>';
+    text += '\n<span class="codex-section">-- Detail --</span>\n';
+    text += `${renderCodexDetail(selected, codexTab)}\n`;
+    text += '\n<span class="codex-meta">[↑↓] navigate | [Tab] switch tab | [K/ESC] exit | [L] log</span>';
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -1623,6 +1855,10 @@ HP: ${player.hp}
             let icon = getEnemyStateIcon(e.state);
             let drawSymbol = icon || eDef.symbol;
             let drawClass = getEnemyDrawClass(e.type, e.state);
+            if (e.elite) drawClass += " enemy-elite-mark";
+            if (visualFlash && e.x === visualFlash.x && e.y === visualFlash.y) {
+              drawClass += ` tile-hit-${visualFlash.element}`;
+            }
             output += `<span class="${drawClass}">${drawSymbol}</span>`;
           } else if (e.type === "chest" && !e.opened) {
             output += '<span class="tile-chest">□</span>';
@@ -1801,6 +2037,12 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (e.key.toLowerCase() === "k" && state === "CODEX") {
+    state = codexReturnState;
+    draw();
+    return;
+  }
+
   if (e.key.toLowerCase() === "l" && !menuScreens.includes(state)) {
     showActionLog = !showActionLog;
     draw();
@@ -1808,6 +2050,15 @@ document.addEventListener("keydown", (e) => {
   }
 
   // ===== INVENTORY TABS (global) =====
+  if (e.key === "Tab" && state === "CODEX") {
+    e.preventDefault();
+    let currentIndex = CODEX_TABS.indexOf(codexTab);
+    codexTab = CODEX_TABS[(currentIndex + 1) % CODEX_TABS.length];
+    codexSelection = 0;
+    draw();
+    return;
+  }
+
   if (e.key === "Tab" && state === "INVENTORY") {
     e.preventDefault();
     inventoryTab = inventoryTab === "GEAR" ? "MATERIALS" : "GEAR";
@@ -2025,6 +2276,29 @@ document.addEventListener("keydown", (e) => {
   }
 
   // ===== INVENTORY CURSOR NAVIGATION =====
+  if (state === "CODEX") {
+    let items = getCodexTabItems(codexTab);
+    clampCodexSelection(items);
+
+    if (e.key === "ArrowUp") {
+      codexSelection = Math.max(0, codexSelection - 1);
+      draw();
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      codexSelection = Math.min(items.length - 1, codexSelection + 1);
+      if (!items.length) codexSelection = 0;
+      draw();
+      return;
+    }
+
+    if (e.key === "Enter") {
+      draw();
+      return;
+    }
+  }
+
   if (state === "INVENTORY") {
     let filteredItems = [];
     player.inventory.forEach((item, originalIndex) => {
@@ -2172,6 +2446,7 @@ document.addEventListener("keydown", (e) => {
         if (e.hp <= 0) {
           result += collectEnemyRewards(e, eDef);
         } else {
+          triggerFlash(e.x, e.y, getAttackElement());
           // enemy survives: flee or enter combat state
           if (eDef.behavior?.flees && e.hp < e.maxHp * 0.5) {
             e.state = "RETURN";
