@@ -4,14 +4,18 @@ body {
   font-family: "Courier New", monospace;
   display: flex;
   justify-content: center;
-  align-items: center;
-  height: 100vh;
+  align-items: flex-start;
+  min-height: 100vh;
+  margin: 0;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 #container {
   display: flex;
-  gap: 40px;
+  gap: 24px;
   align-items: flex-start;
+  width: min(140ch, 100%);
 }
 
 #game {
@@ -21,7 +25,15 @@ body {
   width: 58ch;
   min-height: 34em;
   max-height: 34em;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  padding: 12px 14px;
+  border: 1px solid #2f352f;
+  background: #060806;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.55);
 }
 
 #ui {
@@ -30,7 +42,27 @@ body {
   width: 64ch;
   min-height: 34em;
   max-height: 34em;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  padding: 12px 14px;
+  border: 1px solid #2f352f;
+  background: #060806;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.55);
+}
+
+@media (max-width: 1200px) {
+  #container {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  #game,
+  #ui {
+    width: min(92vw, 64ch);
+  }
 }
 
 /* rarity colors */

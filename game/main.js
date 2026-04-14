@@ -156,7 +156,7 @@ function renderItemNameSpan(item) {
 
 function renderSpecialEffectLine(item) {
   if (!item || item.rarity !== "unique" || !item.specialEffect) return "";
-  return ` <span class="unique-effect">{${item.specialEffect}}</span>`;
+  return `<span class="unique-effect">{${item.specialEffect}}</span>`;
 }
 
 function getLogLineClass(message) {
@@ -1731,7 +1731,8 @@ HP: ${player.hp}
       if (isMaterial(item)) return;
       text += `${i}: ${renderItemNameSpan(item)} `;
       text += `[+${item.atk} ATK / +${item.def} DEF / +${item.hp} HP]\n`;
-      text += `${renderSpecialEffectLine(item)}\n`;
+      let effectLine = renderSpecialEffectLine(item);
+      if (effectLine) text += `${effectLine}\n`;
     });
     text += "\nESC to exit";
     text += renderActionLog();
@@ -1787,7 +1788,8 @@ HP: ${player.hp}
       if (item) {
         text += `${i}: ${slot} ${renderItemNameSpan(item)} `;
         text += `<span class=\"codex-meta\">(+${item.atk}/${item.def})</span>\n`;
-        text += `${renderSpecialEffectLine(item)}\n`;
+        let effectLine = renderSpecialEffectLine(item);
+        if (effectLine) text += `${effectLine}\n`;
       }
     });
     text += "\nESC to exit";
@@ -1823,7 +1825,8 @@ HP: ${player.hp}
           text += `${marker}${displayIndex}: ${renderItemNameSpan(item)} `;
           text += `[${item.type}/${item.slot}${item.part ? `/${item.part}` : ""}${item.hands === 2 ? "/2H" : ""}] `;
           text += `[+${item.atk} ATK / +${item.def} DEF / +${item.hp} HP]\n`;
-          text += `${renderSpecialEffectLine(item)}\n`;
+          let effectLine = renderSpecialEffectLine(item);
+          if (effectLine) text += `${effectLine}\n`;
         }
       });
     }
@@ -1882,6 +1885,7 @@ HP: ${player.hp}
   output += `\nCRIT: ${player.crit}% | DODGE: ${player.dodge}%`;
   output += `\n${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax} | Skill[Q]: ${getClassSkillName()} (2 ${player.resourceType})`;
   output += `\nCombat: ${player.inCombat ? '<span class="log-alert">ENGAGED</span>' : '<span class="codex-meta">idle</span>'}`;
+  output += `\nClass: ${player.class || "unknown"} | Gold: ${player.gold} | Turn: ${turn}`;
 
   output += `\nFloor: ${dungeon.floor}`;
   output += `\nRooms cleared: ${dungeon.roomsCleared}`;
@@ -1894,13 +1898,16 @@ HP: ${player.hp}
 // ===== UI =====
 function drawUI() {
   let text = `=== CHARACTER ===\n`;
+  text += `Class: ${player.class || "unknown"}\n`;
   text += `HP: ${player.hp}/${player.maxHp}\n`;
   text += `ATK: ${player.atk}\n`;
   text += `DEF: ${player.def}\n`;
   text += `CRIT: ${player.crit}%\n`;
   text += `DODGE: ${player.dodge}%\n`;
   text += `${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax}${player.inCombat ? " [combat]" : " [idle]"}\n`;
-  text += `Gold: ${player.gold}\n\n`;
+  text += `Combat: ${player.inCombat ? "ENGAGED" : "idle"}\n`;
+  text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
+  text += `Gold: ${player.gold} | Turn: ${turn}\n\n`;
   text += "=== EQUIPMENT ===\n";
 
   for (let [slot, item] of Object.entries(player.equipment)) {
@@ -1911,7 +1918,8 @@ function drawUI() {
 
     text += `${slot}: ${renderItemNameSpan(item)} `;
     text += `(+${item.atk} ATK / +${item.def} DEF / +${item.hp} HP / +${item.crit}% CRIT / +${item.dodge}% DODGE)\n`;
-    text += `${renderSpecialEffectLine(item)}\n`;
+    let effectLine = renderSpecialEffectLine(item);
+    if (effectLine) text += `${effectLine}\n`;
   }
 
   text += "\n=== INVENTORY ===\n";
@@ -1925,7 +1933,8 @@ function drawUI() {
       text += `${i}: ${renderItemNameSpan(item)} `;
       text += `<span class="codex-meta">[${item.type}/${item.slot}${item.part ? `/${item.part}` : ""}${item.hands === 2 ? "/2H" : ""}]</span> `;
       text += `(+${item.atk}/${item.def}/${item.hp}/${item.crit}%/${item.dodge}%)\n`;
-      text += `${renderSpecialEffectLine(item)}\n`;
+      let effectLine = renderSpecialEffectLine(item);
+      if (effectLine) text += `${effectLine}\n`;
     }
   });
 
