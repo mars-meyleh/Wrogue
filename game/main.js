@@ -111,10 +111,31 @@ const CODEX_LORE_ENTRIES = [
   },
   {
     id: "dungeon_notes",
-    title: "Dungeon Notes",
+    title: "The Wrogue",
     className: "codex-note",
-    summary: "The lower ruins are still unwritten.",
-    detail: "This tab is ready for future journal entries, discovered notes, and unique-item lore connections."
+    summary: "Not a dungeon. Something older.",
+    detail: "Ashroot's founders called it the Wrogue long before anyone mapped it. The name stuck because no wall stays the same twice. Scouts report the geometry shifts between visits — rooms that were sealed are open, corridors end where doors were. The guild stopped sending surveyors after the third team didn't return."
+  },
+  {
+    id: "lore_ashroot_outskirts",
+    title: "Ashroot Outskirts",
+    className: "codex-note",
+    summary: "Floors 1-3. Vermin and scavengers.",
+    detail: "The upper shafts were once storerooms for whatever was built here before Ashroot. Rats and goblins moved in when the builders left. Cave snakes followed the rats. None of them understand what they occupy — they just filled the space. The Wrogue tolerates them the way a body tolerates parasites."
+  },
+  {
+    id: "lore_shattered_bastion",
+    title: "Shattered Bastion",
+    className: "codex-note",
+    summary: "Floors 4-6. Old fortification remnants.",
+    detail: "Mid-depth shows signs of construction: carved archways, fitted stonework, traces of a garrison. Stone beetles colonized the rubble after the walls fell. Dungeon guards are the last echo of whatever force was stationed here — stripped of rank and purpose, running patrol routes that lead nowhere. The bastion fell to something from below, not above."
+  },
+  {
+    id: "lore_umbral_hollows",
+    title: "Umbral Hollows",
+    className: "codex-note",
+    summary: "Floors 7+. The Wrogue's own depth.",
+    detail: "Below the bastion the architecture ends. What replaces it isn't natural cave — the walls are too smooth, the angles wrong. Shadow stalkers don't come from somewhere else. They emerge from the dark itself, as if the Wrogue is generating them. The guild classifies them as local phenomenon, origin unknown. Hunters who've returned from this depth stop giving detailed reports."
   }
 ];
 
@@ -1532,6 +1553,10 @@ const ENEMY_DEFS = {
     name: "Goblin",
     symbol: "g",
     family: "Hollow Dungeon Dwellers",
+    biome: "ashroot_outskirts",
+    role: "roamer",
+    anomalyTags: [],
+    knownInteractions: "Follows a stronger leader when present. Dangerous when massed.",
     colorClass: "enemy-goblin",
     hp: 5, atk: 2, def: 0,
     behavior: {},
@@ -1550,6 +1575,10 @@ const ENEMY_DEFS = {
     name: "Rat",
     symbol: "r",
     family: "Feral Wastes",
+    biome: "ashroot_outskirts",
+    role: "scout",
+    anomalyTags: ["flees"],
+    knownInteractions: "Scatters when wounded. Easier to ignore than other threats.",
     colorClass: "enemy-rat",
     hp: 2, atk: 1, def: 0,
     behavior: { flees: true },
@@ -1567,6 +1596,10 @@ const ENEMY_DEFS = {
     name: "Cave Snake",
     symbol: "s",
     family: "Feral Wastes",
+    biome: "ashroot_outskirts",
+    role: "predator",
+    anomalyTags: ["first_strike"],
+    knownInteractions: "Strikes before you close distance. Closing safely requires care.",
     colorClass: "enemy-snake",
     hp: 4, atk: 2, def: 0,
     behavior: { firstStrike: true },
@@ -1584,6 +1617,10 @@ const ENEMY_DEFS = {
     name: "Stone Beetle",
     symbol: "b",
     family: "Feral Wastes",
+    biome: "shattered_bastion",
+    role: "guardian",
+    anomalyTags: ["armored"],
+    knownInteractions: "High defense makes it costly without strong offense. Pairs well with guards.",
     colorClass: "enemy-beetle",
     hp: 6, atk: 1, def: 2,
     behavior: {},
@@ -1601,6 +1638,10 @@ const ENEMY_DEFS = {
     name: "Dungeon Guard",
     symbol: "G",
     family: "Dungeon Wardens",
+    biome: "shattered_bastion",
+    role: "guardian",
+    anomalyTags: [],
+    knownInteractions: "Paired with beetles it creates a hard front. Focus the guard first.",
     colorClass: "enemy-elite",
     hp: 10, atk: 3, def: 3,
     behavior: {},
@@ -1618,6 +1659,10 @@ const ENEMY_DEFS = {
     name: "Shadow Stalker",
     symbol: "S",
     family: "Deep Dwellers",
+    biome: "umbral_hollows",
+    role: "apex",
+    anomalyTags: ["first_strike"],
+    knownInteractions: "Its advantage is worst in cramped corridors. Draw it into open space.",
     colorClass: "enemy-corrupted",
     hp: 7, atk: 4, def: 0,
     behavior: { firstStrike: true },
@@ -1689,9 +1734,20 @@ function getCodexTabItems(tab) {
   // Equipment entries are transformed into view-specific records here so the
   // codex can pivot between bases, affixes, and relics without duplicating save data.
   if (tab === "CREATURES") {
+    const biomeOrder = { ashroot_outskirts: 0, shattered_bastion: 1, umbral_hollows: 2 };
     return Object.entries(codex.enemies)
-      .map(([key, entry]) => ({ key, ...entry }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .map(([key, entry]) => ({
+        key, ...entry,
+        biome: ENEMY_DEFS[key]?.biome || "",
+        role: ENEMY_DEFS[key]?.role || "",
+        anomalyTags: ENEMY_DEFS[key]?.anomalyTags || [],
+        knownInteractions: ENEMY_DEFS[key]?.knownInteractions || ""
+      }))
+      .sort((a, b) => {
+        let biomeDiff = (biomeOrder[a.biome] ?? 9) - (biomeOrder[b.biome] ?? 9);
+        if (biomeDiff !== 0) return biomeDiff;
+        return a.name.localeCompare(b.name);
+      });
   }
 
   if (tab === "MATERIALS") {
@@ -1780,7 +1836,9 @@ function renderCodexRow(entry, tab, isSelected) {
   if (tab === "CREATURES") {
     let colorClass = entry.colorClass || "enemy-common";
     let symbol = entry.symbol || "?";
-    return `${marker}<span class="${colorClass}">${symbol} ${entry.name}</span> <span class="codex-meta">[${entry.family}] seen:${entry.seen} kills:${entry.kills}</span>`;
+    let biomeName = BIOME_DEFS[entry.biome]?.name || entry.biome || "Unknown";
+    let roleTag = entry.role ? ` · ${entry.role}` : "";
+    return `${marker}<span class="${colorClass}">${symbol} ${entry.name}</span> <span class="codex-meta">[${biomeName}${roleTag}] seen:${entry.seen} kills:${entry.kills}</span>`;
   }
 
   if (tab === "MATERIALS") {
@@ -1819,9 +1877,18 @@ function renderCodexDetail(entry, tab) {
   if (tab === "CREATURES") {
     let colorClass = entry.colorClass || "enemy-common";
     let lore = getEnemyLore(entry.key, entry);
+    let biomeName = BIOME_DEFS[entry.biome]?.name || entry.biome || "Unknown";
+    let tagsLine = entry.anomalyTags && entry.anomalyTags.length
+      ? `\n<span class="codex-meta">tags: ${entry.anomalyTags.join(", ")}</span>`
+      : "";
+    let interactionLine = entry.knownInteractions
+      ? `\n<span class="codex-meta">known: ${entry.knownInteractions}</span>`
+      : "";
     return `<span class="${colorClass}">${entry.name}</span> <span class="codex-meta">[${entry.family}]</span>\n`
-      + `<span class="codex-meta">seen: ${entry.seen} | kills: ${entry.kills}</span>\n`
-      + `<span class="codex-note">"${lore}"</span>`;
+      + `<span class="codex-meta">seen: ${entry.seen} | kills: ${entry.kills} | ${biomeName} · ${entry.role || "unknown"}</span>\n`
+      + `<span class="codex-note">"${lore}"</span>`
+      + tagsLine
+      + interactionLine;
   }
 
   if (tab === "MATERIALS") {
