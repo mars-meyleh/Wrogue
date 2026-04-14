@@ -66,24 +66,28 @@ const CODEX_TABS = ["CREATURES", "MATERIALS", "EQUIPMENT", "TOWN", "LORE"];
 const CODEX_EQUIPMENT_VIEWS = ["BASES", "PREFIXES", "SUFFIXES", "RELICS"];
 const CODEX_TOWN_ENTRIES = [
   {
+    id: "ashroot",
     title: "Ashroot",
     className: "codex-section",
     summary: "Frontier town above the Wrogue.",
     detail: "Ashroot survives by trade, scavenging, and the hunters willing to descend below it."
   },
   {
+    id: "merchant",
     title: "Merchant",
     className: "codex-note",
     summary: "Buys found gear for gold.",
     detail: "The merchant cares about salvage value, rarity, and whether the item can be flipped to another hunter."
   },
   {
+    id: "blacksmith",
     title: "Blacksmith",
     className: "codex-note",
     summary: "Improves worn equipment.",
     detail: "The blacksmith turns gold into durability and edge. Later, crafting hooks can live here too."
   },
   {
+    id: "guild",
     title: "Guild",
     className: "codex-note",
     summary: "Pays for monster materials.",
@@ -92,18 +96,21 @@ const CODEX_TOWN_ENTRIES = [
 ];
 const CODEX_LORE_ENTRIES = [
   {
+    id: "first_arrival",
     title: "First Arrival",
     className: "codex-section",
     summary: "You came to Ashroot under contract.",
     detail: "A guild contract, a rough weapon, and the promise of pay were enough to bring you to the mouth of the Wrogue."
   },
   {
+    id: "guild_contract",
     title: "Guild Contract",
     className: "codex-note",
     summary: "Kill, loot, and return alive.",
     detail: "The terms are simple: descend, recover valuables, document threats, and make it back to town breathing."
   },
   {
+    id: "dungeon_notes",
     title: "Dungeon Notes",
     className: "codex-note",
     summary: "The lower ruins are still unwritten.",
@@ -253,6 +260,7 @@ function completeWorldMilestone(id, message) {
 }
 
 function recordDeepestFloor() {
+  syncBiomeProgressByDepth();
   let biomeId = world.biomeProgress.activeBiome;
   let current = world.biomeProgress.deepestFloorByBiome[biomeId] || 0;
   world.biomeProgress.deepestFloorByBiome[biomeId] = Math.max(current, dungeon.floor);
@@ -280,6 +288,239 @@ function getMerchantMenuLabel() {
 
 function getGuildMenuLabel() {
   return world.town.contractBoardUnlocked ? "Guild Board" : "Guild";
+}
+
+const BIOME_DEFS = {
+  ashroot_outskirts: {
+    id: "ashroot_outskirts",
+    name: "Ashroot Outskirts",
+    floorMin: 1,
+    floorMax: 3,
+    enemyPool: ["rat", "goblin", "cave_snake"],
+    tileWeights: { ".": 0.86, ",": 0.10, "~": 0.04 }
+  },
+  shattered_bastion: {
+    id: "shattered_bastion",
+    name: "Shattered Bastion",
+    floorMin: 4,
+    floorMax: 6,
+    enemyPool: ["goblin", "stone_beetle", "dungeon_guard", "cave_snake"],
+    tileWeights: { ".": 0.80, ",": 0.06, "~": 0.08, "^": 0.06 }
+  },
+  umbral_hollows: {
+    id: "umbral_hollows",
+    name: "Umbral Hollows",
+    floorMin: 7,
+    floorMax: 99,
+    enemyPool: ["stone_beetle", "dungeon_guard", "shadow_stalker", "cave_snake"],
+    tileWeights: { ".": 0.78, ",": 0.04, "~": 0.08, "^": 0.10 }
+  }
+};
+
+const TILE_EFFECT_DEFS = {
+  ".": { name: "Floor", walkable: true },
+  ",": { name: "Moss", walkable: true },
+  "~": { name: "Ash Mire", walkable: true },
+  "^": { name: "Shardfield", walkable: true, playerDamageOnEnter: 1 },
+  "#": { name: "Wall", walkable: false },
+  ">": { name: "Exit", walkable: true }
+};
+
+function getBiomeByFloor(floor) {
+  if (floor <= 3) return BIOME_DEFS.ashroot_outskirts;
+  if (floor <= 6) return BIOME_DEFS.shattered_bastion;
+  return BIOME_DEFS.umbral_hollows;
+}
+
+function syncBiomeProgressByDepth() {
+  let biome = getBiomeByFloor(dungeon.floor);
+  world.biomeProgress.activeBiome = biome.id;
+  if (!world.biomeProgress.unlocked.includes(biome.id)) {
+    world.biomeProgress.unlocked.push(biome.id);
+    logAction(`Biome unlocked: ${biome.name}.`);
+  }
+}
+
+function getActiveBiomeDef() {
+  let active = BIOME_DEFS[world.biomeProgress.activeBiome];
+  return active || getBiomeByFloor(dungeon.floor);
+}
+
+function pickBiomeTile(tileWeights) {
+  let roll = Math.random();
+  let running = 0;
+  for (let tile of [".", ",", "~", "^"]) {
+    running += tileWeights[tile] || 0;
+    if (roll <= running) return tile;
+  }
+  return ".";
+}
+
+function applyPlayerTileEntryEffects(x, y) {
+  let tile = map[y]?.[x] || ".";
+  let def = TILE_EFFECT_DEFS[tile];
+  if (!def || !def.playerDamageOnEnter) return false;
+
+  player.hp = Math.max(0, player.hp - def.playerDamageOnEnter);
+  logAction(`${def.name} cuts you for ${def.playerDamageOnEnter}.`);
+  if (player.hp <= 0) {
+    player.hp = player.maxHp;
+    enterTown("You collapse in the ruins and wake under Ashroot's lanterns.");
+    return true;
+  }
+  return false;
+}
+
+function renderMapTileSymbol(tile) {
+  if (tile === "~") return '<span class="codex-meta">~</span>';
+  if (tile === "^") return '<span class="log-damage">^</span>';
+  if (tile === ",") return '<span class="codex-note">,</span>';
+  return tile;
+}
+
+function generateClusterLayout() {
+  map = [];
+  for (let y = 0; y < HEIGHT; y++) {
+    let row = [];
+    for (let x = 0; x < WIDTH; x++) {
+      row.push("#");
+    }
+    map.push(row);
+  }
+
+  function carveWalkable(x, y) {
+    if (x <= 0 || y <= 0 || x >= WIDTH - 1 || y >= HEIGHT - 1) return;
+    map[y][x] = ".";
+  }
+
+  let roomCenters = [];
+
+  // Starter chamber guarantees a valid spawn area near the top-left corner.
+  for (let y = 1; y <= 4; y++) {
+    for (let x = 1; x <= 5; x++) {
+      map[y][x] = ".";
+    }
+  }
+  roomCenters.push({ x: 3, y: 2 });
+
+  let roomCount = rand(4, 7);
+
+  for (let i = 0; i < roomCount; i++) {
+    let rw = rand(5, 9);
+    let rh = rand(4, 6);
+    let rx = rand(1, WIDTH - rw - 2);
+    let ry = rand(1, HEIGHT - rh - 2);
+
+    for (let y = ry; y < ry + rh; y++) {
+      for (let x = rx; x < rx + rw; x++) {
+        map[y][x] = ".";
+      }
+    }
+
+    roomCenters.push({ x: Math.floor(rx + rw / 2), y: Math.floor(ry + rh / 2) });
+  }
+
+  for (let i = 1; i < roomCenters.length; i++) {
+    let a = roomCenters[i - 1];
+    let b = roomCenters[i];
+
+    let x = a.x;
+    while (x !== b.x) {
+      carveWalkable(x, a.y);
+      carveWalkable(x, a.y + 1);
+      x += x < b.x ? 1 : -1;
+    }
+
+    let y = a.y;
+    while (y !== b.y) {
+      carveWalkable(b.x, y);
+      carveWalkable(b.x + 1, y);
+      y += y < b.y ? 1 : -1;
+    }
+
+    carveWalkable(b.x, b.y);
+  }
+
+  // Breach some interior walls so layouts are less corridor-locked.
+  for (let y = 1; y < HEIGHT - 1; y++) {
+    for (let x = 1; x < WIDTH - 1; x++) {
+      if (map[y][x] !== "#") continue;
+      let horizontal = (map[y][x - 1] !== "#") && (map[y][x + 1] !== "#");
+      let vertical = (map[y - 1][x] !== "#") && (map[y + 1][x] !== "#");
+      if ((horizontal || vertical) && Math.random() < 0.14) {
+        map[y][x] = ".";
+      }
+    }
+  }
+}
+
+function getTileNeighborCount(x, y) {
+  let offsets = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let count = 0;
+
+  for (let [ox, oy] of offsets) {
+    if (isWalkableTile(x + ox, y + oy)) count++;
+  }
+
+  return count;
+}
+
+function getLocalWalkableCount(x, y, radius = 1) {
+  let count = 0;
+
+  for (let yy = y - radius; yy <= y + radius; yy++) {
+    for (let xx = x - radius; xx <= x + radius; xx++) {
+      if (isWalkableTile(xx, yy)) count++;
+    }
+  }
+
+  return count;
+}
+
+function placeExitTile() {
+  let candidates = [];
+
+  for (let y = 1; y < HEIGHT - 1; y++) {
+    for (let x = 1; x < WIDTH - 1; x++) {
+      if (!isWalkableTile(x, y)) continue;
+      if (x === 1 && y === 1) continue;
+
+      let distanceFromStart = getDistance(1, 1, x, y);
+      let neighbors = getTileNeighborCount(x, y);
+      let localOpen = getLocalWalkableCount(x, y, 1);
+      if (distanceFromStart >= 6 && neighbors >= 2 && localOpen >= 5) {
+        candidates.push({ x, y });
+      }
+    }
+  }
+
+  if (!candidates.length) {
+    for (let y = 1; y < HEIGHT - 1; y++) {
+      for (let x = 1; x < WIDTH - 1; x++) {
+        if (isWalkableTile(x, y) && !(x === 1 && y === 1)) {
+          candidates.push({ x, y });
+        }
+      }
+    }
+  }
+
+  let chosen = candidates[rand(0, Math.max(0, candidates.length - 1))];
+  if (chosen) {
+    map[chosen.y][chosen.x] = ">";
+  }
+}
+
+function applyBiomeTiles() {
+  let biome = getActiveBiomeDef();
+
+  // Guardrail: keep only a few special tiles so onboarding remains readable.
+  for (let y = 1; y < HEIGHT - 1; y++) {
+    for (let x = 1; x < WIDTH - 1; x++) {
+      if (map[y][x] !== ".") continue;
+      if (x === 1 && y === 1) continue;
+      map[y][x] = pickBiomeTile(biome.tileWeights);
+    }
+  }
 }
 
 function getTownStatusNote() {
@@ -320,20 +561,70 @@ function maybeLogTownTierWelcome() {
   if (tier <= (world.narrative.lastWelcomedTier || 0)) return;
 
   if (tier === 1) {
-    logAction("Merchant: 'People are spending coin again. Keep bringing salvage.'");
+    logAction(`Merchant: '${getMerchantVoiceLine("tier_1")}'`);
     logAction("Blacksmith: 'First scaffolds are up. Steel sounds better in a living town.'");
   } else if (tier === 2) {
-    logAction("Merchant: 'We are drafting guild charters. Ashroot is no longer a dead-end stall.'");
-    logAction("Guild Keeper: 'Reports from your runs are drawing new attention to our contracts.'");
+    logAction(`Merchant: '${getMerchantVoiceLine("tier_2")}'`);
+    logAction(`Guild Keeper: '${getGuildVoiceLine("tier_2")}'`);
   } else if (tier >= 3) {
-    logAction("Guild Keeper: 'Outside petitions are arriving. We are becoming a real frontier office.'");
-    logAction("Merchant: 'Caravans now ask for Ashroot by name.'");
+    logAction(`Guild Keeper: '${getGuildVoiceLine("tier_3")}'`);
+    logAction(`Merchant: '${getMerchantVoiceLine("tier_3")}'`);
   }
 
   world.narrative.lastWelcomedTier = tier;
 }
 
+function getMerchantVoiceLine(context) {
+  if (player.class === "witch") {
+    if (context === "tier_1") return "Coin moves again. Keep the salvage clean and the names cleaner.";
+    if (context === "tier_2") return "Clerks now price your finds by omen marks, not rust weight.";
+    if (context === "tier_3") return "Caravans ask for your route notes before they ask for my prices.";
+    if (context === "codex") return "She tracks value like a ritual: weight, wear, and who will trust the item next.";
+  }
+  if (player.class === "orc") {
+    if (context === "tier_1") return "Coin is moving. Bring pieces I can shift by dusk.";
+    if (context === "tier_2") return "Guild scales are out. Your hauls now set street rates.";
+    if (context === "tier_3") return "Caravan bosses ask for your names on their buy lists.";
+    if (context === "codex") return "He prices by utility first: edge, grip, and how fast another hunter will buy.";
+  }
+  if (context === "tier_1") return "People are spending coin again. Keep bringing salvage.";
+  if (context === "tier_2") return "We are drafting guild charters. Ashroot is no longer a dead-end stall.";
+  if (context === "tier_3") return "Caravans now ask for Ashroot by name.";
+  return "The merchant cares about salvage value, rarity, and whether the item can be flipped to another hunter.";
+}
+
+function getGuildVoiceLine(context) {
+  if (player.class === "witch") {
+    if (context === "tier_2") return "Your reports read like ward maps. We are rewriting old hazard charts.";
+    if (context === "tier_3") return "Outside petitions now request Ashroot notation and your signature marks.";
+    if (context === "menu") return "The ledger is now half contract log, half omen index from your runs.";
+    if (context === "codex") return "The keeper values disciplined notes as much as trophies, especially from deep paths.";
+  }
+  if (player.class === "orc") {
+    if (context === "tier_2") return "Your runs gave us leverage. Deeper contracts now carry real pay.";
+    if (context === "tier_3") return "Outside petitions are here. They trust Ashroot because your hunts held the line.";
+    if (context === "menu") return "The desk runs like a war board now: marks, routes, and payout brackets.";
+    if (context === "codex") return "The keeper keeps a hard ledger: proof of kills, recovered stock, and route discipline.";
+  }
+  if (context === "tier_2") return "Reports from your runs are drawing new attention to our contracts.";
+  if (context === "tier_3") return "Outside petitions are arriving. We are becoming a real frontier office.";
+  if (context === "menu") return "The guild still operates as a rough buying counter and rumor desk.";
+  return "The guild tracks proof of work, purchases raw materials, and will eventually tie into contracts and requests.";
+}
+
 function getMerchantFlavorLine() {
+  if (player.class === "witch") {
+    if (world.town.rebuildTier === 0) return "The merchant checks each trinket for hidden marks before naming a price.";
+    if (world.town.rebuildTier === 1) return "Her stall now keeps separate ledgers for salvage, reagents, and risky curios.";
+    if (world.town.rebuildTier === 2) return "Guild clerks shadow each sale, asking how your omen notes shift demand.";
+    return "Envoys compare route ledgers and ask which relic-signs make caravans hesitate.";
+  }
+  if (player.class === "orc") {
+    if (world.town.rebuildTier === 0) return "The merchant weighs gear by practical edge, not polish.";
+    if (world.town.rebuildTier === 1) return "The stall has grown into a loud trade row where hard bargains hold.";
+    if (world.town.rebuildTier === 2) return "Guild clerks now benchmark your sales to set wider street rates.";
+    return "Merchant envoys test bulk contracts and ask what a frontline kit should cost.";
+  }
   if (world.town.rebuildTier === 0) return "The merchant counts every coin twice and every risk three times.";
   if (world.town.rebuildTier === 1) return "The merchant's stall has grown into a canvas-lined trading row.";
   if (world.town.rebuildTier === 2) return "Guild clerks now shadow each sale, testing prices for a larger market.";
@@ -348,10 +639,40 @@ function getBlacksmithFlavorLine() {
 }
 
 function getGuildFlavorLine() {
+  if (player.class === "witch") {
+    if (world.town.rebuildTier === 0) return "A rough desk and warded ink keep the guild records barely coherent.";
+    if (world.town.rebuildTier === 1) return "Pinned maps now include your margin notes on omen-heavy corridors.";
+    if (world.town.rebuildTier === 2) return "Contract scribes classify risk by your route notation and encounter signs.";
+    return "Outside seals now arrive requesting Ashroot's ward-index format by name.";
+  }
+  if (player.class === "orc") {
+    if (world.town.rebuildTier === 0) return "A rough desk, a stamp, and stubborn discipline keep the guild alive.";
+    if (world.town.rebuildTier === 1) return "Kill ledgers crowd the wall beside route sketches marked for clean withdrawal.";
+    if (world.town.rebuildTier === 2) return "Scribes now draft pay brackets from your war-log pacing and casualty risk.";
+    return "Outside petition seals now arrive with Ashroot priority marks already stamped.";
+  }
   if (world.town.rebuildTier === 0) return "A rough desk, a stamp, and a promise of payment keep the guild alive.";
   if (world.town.rebuildTier === 1) return "Pinned maps and kill ledgers crowd the guild wall.";
   if (world.town.rebuildTier === 2) return "Contract scribes begin drafting rank brackets for deeper expeditions.";
   return "Petition seals from outside territories now sit beside Ashroot contracts.";
+}
+
+function getClassCodexPersonalityLine(tab, entryId) {
+  if (tab === "TOWN" && entryId === "merchant") {
+    return getMerchantVoiceLine("codex");
+  }
+  if (tab === "TOWN" && entryId === "guild") {
+    return getGuildVoiceLine("codex");
+  }
+  if (tab === "LORE" && entryId === "first_arrival") {
+    if (player.class === "witch") return "You framed the contract as a study in old forces and survivable rituals.";
+    if (player.class === "orc") return "You took the contract as clean work: descend, hold, return with proof.";
+  }
+  if (tab === "LORE" && entryId === "guild_contract") {
+    if (player.class === "witch") return "Your reports read like field liturgy: threat signs, safe routes, and residue notes.";
+    if (player.class === "orc") return "Your reports read like campaign notes: contact pace, break points, and salvage discipline.";
+  }
+  return "";
 }
 
 function rand(min, max) {
@@ -551,7 +872,7 @@ function getOpenPosition() {
       continue;
     }
 
-    if (map[y][x] !== ".") {
+    if (!isWalkableTile(x, y) || map[y][x] === ">") {
       attempts++;
       continue;
     }
@@ -790,8 +1111,8 @@ function useClassSkill() {
 
 function isWalkableTile(x, y) {
   if (!map[y] || !map[y][x]) return false;
-  if (map[y][x] === "#") return false;
-  return true;
+  let tile = map[y][x];
+  return TILE_EFFECT_DEFS[tile]?.walkable !== false;
 }
 
 function isOccupiedByBlockingEntity(x, y, ignoreEntity = null) {
@@ -852,12 +1173,31 @@ function resolveEnemyAttack(enemy, eDef, events) {
   return false;
 }
 
+function getEnemyStateLineBudgetByFloor() {
+  if (dungeon.floor <= 1) return 1;
+  if (dungeon.floor <= 2) return 2;
+  if (dungeon.floor <= 3) return 3;
+  return Infinity;
+}
+
+function shouldEmitEnemyStateLine(currentCount, budget) {
+  if (currentCount >= budget) return false;
+  // Early floors keep tactical logs readable by probabilistically thinning
+  // non-damage state chatter while preserving direct attack and reward lines.
+  if (dungeon.floor <= 1) return Math.random() < 0.55;
+  if (dungeon.floor <= 2) return Math.random() < 0.72;
+  if (dungeon.floor <= 3) return Math.random() < 0.88;
+  return true;
+}
+
 function runEnemyBehaviorTurn() {
   if (state !== "DUNGEON") return;
 
   // Enemy turns use a compact state machine so patrol, aggro, attack, and reset
   // all stay readable while still leaving room for richer behavior later.
   let enemyEvents = [];
+  let stateEventBudget = getEnemyStateLineBudgetByFloor();
+  let stateEventCount = 0;
   let alertRange = 4;
   let chaseRange = 2;
   let dropChaseRange = 6;
@@ -957,10 +1297,17 @@ function runEnemyBehaviorTurn() {
     }
 
     if (previousState !== enemy.state) {
-      if (enemy.state === "ALERT") enemyEvents.push(`${eDef.name} noticed you!`);
-      if (enemy.state === "CHASE") enemyEvents.push(`${eDef.name} is pursuing you.`);
-      if (enemy.state === "RETURN" && !enemyEvents.some(ev => ev.includes("fled wounded"))) {
+      if (enemy.state === "ALERT" && shouldEmitEnemyStateLine(stateEventCount, stateEventBudget)) {
+        enemyEvents.push(`${eDef.name} noticed you!`);
+        stateEventCount++;
+      }
+      if (enemy.state === "CHASE" && shouldEmitEnemyStateLine(stateEventCount, stateEventBudget)) {
+        enemyEvents.push(`${eDef.name} is pursuing you.`);
+        stateEventCount++;
+      }
+      if (enemy.state === "RETURN" && !enemyEvents.some(ev => ev.includes("fled wounded")) && shouldEmitEnemyStateLine(stateEventCount, stateEventBudget)) {
         enemyEvents.push(`${eDef.name} lost your trail.`);
+        stateEventCount++;
       }
     }
   }
@@ -1524,9 +1871,13 @@ function renderCodexDetail(entry, tab) {
     }
   }
 
+  let classLine = getClassCodexPersonalityLine(tab, entry.id);
+  let classDetail = classLine ? `\n<span class="codex-meta">Class lens: ${classLine}</span>` : "";
+
   return `<span class="${entry.className || "codex-note"}">${entry.title}</span>\n`
     + `<span class="codex-meta">${entry.summary}</span>\n`
-    + `<span class="codex-note">${entry.detail}</span>`;
+    + `<span class="codex-note">${entry.detail}</span>`
+    + classDetail;
 }
 
 function renderCodexTabBar() {
@@ -1541,11 +1892,8 @@ function renderCodexEquipmentBar() {
 
 // ===== DUNGEON ENCOUNTERS, DROPS, AND GEAR =====
 function getEnemyPool() {
-  if (dungeon.floor <= 2)  return ["rat", "goblin"];
-  if (dungeon.floor <= 4)  return ["rat", "goblin", "cave_snake"];
-  if (dungeon.floor <= 6)  return ["goblin", "cave_snake", "stone_beetle", "dungeon_guard"];
-  if (dungeon.floor <= 8)  return ["cave_snake", "stone_beetle", "dungeon_guard"];
-  return ["stone_beetle", "dungeon_guard", "shadow_stalker"];
+  let biome = getActiveBiomeDef();
+  return biome.enemyPool;
 }
 
 function getEnemyCount() {
@@ -2122,35 +2470,16 @@ function startGame() {
 
 // ===== MAP =====
 function generateRoom() {
-  map = [];
   entities = [];
+  syncBiomeProgressByDepth();
 
-  // The current generator builds one bounded chamber. This stays intentionally
-  // simple until biome layouts and tile effects are introduced in later phases.
-  // build map FIRST
-  for (let y = 0; y < HEIGHT; y++) {
-    let row = [];
-    for (let x = 0; x < WIDTH; x++) {
-      if (x === 0 || y === 0 || x === WIDTH-1 || y === HEIGHT-1) {
-        row.push("#");
-      } else {
-        row.push(".");
-      }
-    }
-    map.push(row);
-  }
+  // Phase 4 layout: connected chambers keep navigation legible while making
+  // each floor feel less like one open box.
+  generateClusterLayout();
+  applyBiomeTiles();
 
-  // place exit AFTER map exists
-  let exitPlaced = false;
-  while (!exitPlaced) {
-    let x = rand(1, WIDTH-2);
-    let y = rand(1, HEIGHT-2);
-
-    if (map[y][x] === "." && !(x === 1 && y === 1)) {
-      map[y][x] = ">";
-      exitPlaced = true;
-    }
-  }
+  // Exit placement avoids narrow chokepoints to preserve route freedom.
+  placeExitTile();
 
   player.x = 1;
   player.y = 1;
@@ -2177,6 +2506,7 @@ function generateRoom() {
   });
 
   logAction(`Entered dungeon floor ${dungeon.floor}.`);
+  logAction(`Biome: ${getActiveBiomeDef().name}.`);
   setAtmosphereBanner("dungeon");
   updateCombatState();
 }
@@ -2292,6 +2622,7 @@ Kill what you find. Loot what you can. Come back alive.</span>
   }
 
   if (state === "TOWN") {
+    let biome = getActiveBiomeDef();
     gameEl.innerHTML = `
 [TOWN]
 
@@ -2306,6 +2637,7 @@ M. Main Menu
 Gold: ${player.gold}
 HP: ${player.hp}
 Town Tier: ${world.town.rebuildTier}  [${world.town.districtState}]
+Active Biome Track: ${biome.name}
 ${getTownStatusNote()}
 `;
   if (atmosphereBanner) {
@@ -2379,7 +2711,7 @@ ${getTownStatusNote()}
     if (world.town.contractBoardUnlocked) {
       text += "\n<span class=\"codex-note\">Requests are beginning to arrive from beyond Ashroot, but the board is not active yet.</span>\n";
     } else {
-      text += "\n<span class=\"codex-meta\">The guild still operates as a rough buying counter and rumor desk.</span>\n";
+      text += `\n<span class=\"codex-meta\">${getGuildVoiceLine("menu")}</span>\n`;
     }
     text += "\n[number] sell 1 | Shift+[number] sell stack\nESC to exit";
     text += renderActionLog();
@@ -2482,13 +2814,15 @@ ${getTownStatusNote()}
 
       if (!drawn) {
         if (map[y][x] === ">") output += '<span class="tile-exit">&gt;</span>';
-        else output += map[y][x];
+        else output += renderMapTileSymbol(map[y][x]);
       }
     }
     output += "\n";
   }
 
+  let biome = getActiveBiomeDef();
   output += `\nDungeon Floor: ${dungeon.floor}`;
+  output += `\nBiome: ${biome.name}`;
   output += `\n${getClassCombatLabel()}: ${player.inCombat ? '<span class="log-alert">ENGAGED</span>' : '<span class="codex-meta">idle</span>'}`;
   output += `\n${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax} | Skill[Q]: ${getClassSkillName()} (2 ${player.resourceType})`;
   output += `\nFloor: ${dungeon.floor}`;
@@ -2505,6 +2839,7 @@ ${getTownStatusNote()}
 // ===== SIDE PANEL UI =====
 function drawUI() {
   if (state === "TOWN") {
+    let biome = getActiveBiomeDef();
     let text = `${getTownHeading()}\n`;
     text += `HP: ${player.hp}/${player.maxHp}\n`;
     text += `Gold: ${player.gold}\n`;
@@ -2513,6 +2848,7 @@ function drawUI() {
     text += `Home: ${world.town.playerHomeUnlocked ? "open" : "not ready"}\n`;
     text += `Trade: ${world.town.merchantGuildUnlocked ? "merchant guild forming" : "single merchant stall"}\n`;
     text += `Guild: ${world.town.contractBoardUnlocked ? "board prepared" : "buyers' desk only"}\n`;
+    text += `Depth Track: ${biome.name}\n`;
     text += `\n${getTownStatusNote()}\n`;
     if (atmosphereBanner) text += `\n<span class="flow-banner">${atmosphereBanner}</span>\n`;
     uiEl.innerHTML = text;
@@ -3040,8 +3376,10 @@ document.addEventListener("keydown", (e) => {
   if (map[ny][nx] === ">") {
 
   if (!isRoomCleared()) {
-    // blocked
-    logAction("Exit is locked until all goblins are defeated.");
+    // Keep exit tiles traversable so a generated gate never blocks the map.
+    player.x = nx;
+    player.y = ny;
+    finishTurn("The descent gate is sealed until hostiles are cleared.", false);
     draw();
     return;
   }
@@ -3140,6 +3478,10 @@ document.addEventListener("keydown", (e) => {
 
   player.x = nx;
   player.y = ny;
+  if (applyPlayerTileEntryEffects(player.x, player.y)) {
+    draw();
+    return;
+  }
   finishTurn(`Moved to (${player.x},${player.y}).`, false);
 
   draw();
