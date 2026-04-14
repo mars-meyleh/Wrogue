@@ -18,6 +18,8 @@ let atmosphereBanner = "";
 let atmosphereBannerTimeoutId = null;
 let codex = { enemies: {}, materials: {}, equipment: {}, lore: [] };
 
+let world = createDefaultWorldState();
+
 let dungeon = {
   floor: 1,
   roomsCleared: 0
@@ -59,6 +61,7 @@ let entities = [];
 // ===== STATIC UI DATA =====
 const WIDTH = Math.floor(8 * 2.5);
 const HEIGHT = Math.floor(5 * 2.5);
+const SAVE_VERSION = 1;
 const CODEX_TABS = ["CREATURES", "MATERIALS", "EQUIPMENT", "TOWN", "LORE"];
 const CODEX_EQUIPMENT_VIEWS = ["BASES", "PREFIXES", "SUFFIXES", "RELICS"];
 const CODEX_TOWN_ENTRIES = [
@@ -109,6 +112,91 @@ const CODEX_LORE_ENTRIES = [
 ];
 
 // ===== UTILITIES =====
+function createDefaultWorldState() {
+  return {
+    town: {
+      name: "Ashroot",
+      rebuildTier: 0,
+      districtState: "ruined",
+      recoveryUnlocked: true,
+      playerHomeUnlocked: false,
+      merchantGuildUnlocked: false,
+      contractBoardUnlocked: false
+    },
+    milestones: {
+      completed: [],
+      pending: []
+    },
+    biomeProgress: {
+      activeBiome: "ashroot_outskirts",
+      unlocked: ["ashroot_outskirts"],
+      deepestFloorByBiome: {
+        ashroot_outskirts: 0
+      }
+    },
+    npcRelations: {
+      merchant: 0,
+      blacksmith: 0,
+      guild: 0
+    },
+    featureFlags: {
+      classExpansionReady: false,
+      travelMapReady: false,
+      gatherablesReady: false
+    }
+  };
+}
+
+function migrateSaveData(save) {
+  let migrated = { ...save };
+  let version = Number.isInteger(migrated.saveVersion) ? migrated.saveVersion : 0;
+
+  if (version < 1) {
+    migrated.world = createDefaultWorldState();
+    version = 1;
+  }
+
+  migrated.saveVersion = version;
+  return migrated;
+}
+
+function normalizeWorldState(savedWorld) {
+  let defaults = createDefaultWorldState();
+  let worldState = savedWorld || {};
+
+  return {
+    ...defaults,
+    ...worldState,
+    town: {
+      ...defaults.town,
+      ...(worldState.town || {})
+    },
+    milestones: {
+      ...defaults.milestones,
+      ...(worldState.milestones || {}),
+      completed: Array.isArray(worldState.milestones?.completed) ? worldState.milestones.completed : defaults.milestones.completed,
+      pending: Array.isArray(worldState.milestones?.pending) ? worldState.milestones.pending : defaults.milestones.pending
+    },
+    biomeProgress: {
+      ...defaults.biomeProgress,
+      ...(worldState.biomeProgress || {}),
+      unlocked: Array.isArray(worldState.biomeProgress?.unlocked) ? worldState.biomeProgress.unlocked : defaults.biomeProgress.unlocked,
+      deepestFloorByBiome: {
+        ...defaults.biomeProgress.deepestFloorByBiome,
+        ...(worldState.biomeProgress?.deepestFloorByBiome || {})
+      }
+    },
+    npcRelations: {
+      ...defaults.npcRelations,
+      ...(worldState.npcRelations || {})
+    },
+    featureFlags: {
+      ...defaults.featureFlags,
+      ...(worldState.featureFlags || {})
+    }
+  };
+}
+
 function rand(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -1726,9 +1814,11 @@ function calculateStats() {
 
 function saveGame() {
   localStorage.setItem("save", JSON.stringify({
+    saveVersion: SAVE_VERSION,
     player,
     dungeon,
-    codex
+    codex,
+    world
   }));
 }
 
@@ -1736,7 +1826,7 @@ function loadGame() {
   let data = localStorage.getItem("save");
   if (!data) return false;
 
-  let save = JSON.parse(data);
+  let save = migrateSaveData(JSON.parse(data));
 
   player = {
     ...player,
@@ -1752,6 +1842,8 @@ function loadGame() {
     ...dungeon,
     ...save.dungeon
   };
+
+  world = normalizeWorldState(save.world);
 
   if (save.codex) {
     codex = {
@@ -1820,6 +1912,7 @@ function startGame() {
   dungeon.floor = 1;
   dungeon.roomsCleared = 0;
   codex = { enemies: {}, materials: {}, equipment: {}, lore: [] };
+  world = createDefaultWorldState();
   inventoryTab = "GEAR";
   inventorySelection = 0;
 
