@@ -139,6 +139,11 @@ function createDefaultWorldState() {
       blacksmith: 0,
       guild: 0
     },
+    narrative: {
+      seenFamilies: [],
+      seenMaterialTiers: [],
+      lastWelcomedTier: 0
+    },
     featureFlags: {
       classExpansionReady: false,
       travelMapReady: false,
@@ -189,6 +194,12 @@ function normalizeWorldState(savedWorld) {
     npcRelations: {
       ...defaults.npcRelations,
       ...(worldState.npcRelations || {})
+    },
+    narrative: {
+      ...defaults.narrative,
+      ...(worldState.narrative || {}),
+      seenFamilies: Array.isArray(worldState.narrative?.seenFamilies) ? worldState.narrative.seenFamilies : defaults.narrative.seenFamilies,
+      seenMaterialTiers: Array.isArray(worldState.narrative?.seenMaterialTiers) ? worldState.narrative.seenMaterialTiers : defaults.narrative.seenMaterialTiers
     },
     featureFlags: {
       ...defaults.featureFlags,
@@ -276,6 +287,71 @@ function getTownStatusNote() {
   if (world.town.districtState === "repairing") return "Fresh timber and stitched canvas mark the first signs of return.";
   if (world.town.districtState === "restored") return "Trade stalls and watchfires make Ashroot look lived in again.";
   return "Caravans, contracts, and rumor now gather where only ash once settled.";
+}
+
+function getClassDiscoveryLine(kind, value) {
+  if (player.class === "witch") {
+    if (kind === "family") return `Witch note: the ${value.toLowerCase()} carry the same old echo.`;
+    if (kind === "material") return `Witch note: ${value} reagents may answer a proper rite.`;
+  }
+  if (player.class === "orc") {
+    if (kind === "family") return `Orc note: the ${value.toLowerCase()} fight with a readable rhythm.`;
+    if (kind === "material") return `Orc note: ${value} salvage can hold in field-forged work.`;
+  }
+  return "Field note recorded.";
+}
+
+function maybeLogFamilyDiscovery(family) {
+  if (!family) return;
+  if (world.narrative.seenFamilies.includes(family)) return;
+  world.narrative.seenFamilies.push(family);
+  logAction(getClassDiscoveryLine("family", family));
+}
+
+function maybeLogMaterialTierDiscovery(tier) {
+  if (!tier) return;
+  if (world.narrative.seenMaterialTiers.includes(tier)) return;
+  world.narrative.seenMaterialTiers.push(tier);
+  logAction(getClassDiscoveryLine("material", tier));
+}
+
+function maybeLogTownTierWelcome() {
+  let tier = world.town.rebuildTier;
+  if (tier <= (world.narrative.lastWelcomedTier || 0)) return;
+
+  if (tier === 1) {
+    logAction("Merchant: 'People are spending coin again. Keep bringing salvage.'");
+    logAction("Blacksmith: 'First scaffolds are up. Steel sounds better in a living town.'");
+  } else if (tier === 2) {
+    logAction("Merchant: 'We are drafting guild charters. Ashroot is no longer a dead-end stall.'");
+    logAction("Guild Keeper: 'Reports from your runs are drawing new attention to our contracts.'");
+  } else if (tier >= 3) {
+    logAction("Guild Keeper: 'Outside petitions are arriving. We are becoming a real frontier office.'");
+    logAction("Merchant: 'Caravans now ask for Ashroot by name.'");
+  }
+
+  world.narrative.lastWelcomedTier = tier;
+}
+
+function getMerchantFlavorLine() {
+  if (world.town.rebuildTier === 0) return "The merchant counts every coin twice and every risk three times.";
+  if (world.town.rebuildTier === 1) return "The merchant's stall has grown into a canvas-lined trading row.";
+  if (world.town.rebuildTier === 2) return "Guild clerks now shadow each sale, testing prices for a larger market.";
+  return "Merchant guild envoys compare route ledgers and ask about deeper demand.";
+}
+
+function getBlacksmithFlavorLine() {
+  if (world.town.rebuildTier === 0) return "The blacksmith works from a half-collapsed shed and a stubborn anvil.";
+  if (world.town.rebuildTier === 1) return "A second forge is lit. Repairs now outpace breakage.";
+  if (world.town.rebuildTier === 2) return "Smith apprentices sort steel by depth marks and enemy wear patterns.";
+  return "The forge hall now tracks custom requests from incoming caravans and hunters.";
+}
+
+function getGuildFlavorLine() {
+  if (world.town.rebuildTier === 0) return "A rough desk, a stamp, and a promise of payment keep the guild alive.";
+  if (world.town.rebuildTier === 1) return "Pinned maps and kill ledgers crowd the guild wall.";
+  if (world.town.rebuildTier === 2) return "Contract scribes begin drafting rank brackets for deeper expeditions.";
+  return "Petition seals from outside territories now sit beside Ashroot contracts.";
 }
 
 function rand(min, max) {
@@ -1242,6 +1318,7 @@ function registerMaterial(materialId) {
       colorClass: def.colorClass,
       uses: def.uses
     };
+    maybeLogMaterialTierDiscovery(def.tier);
   }
 }
 
@@ -1521,6 +1598,7 @@ function registerEnemySeen(type) {
     };
   }
   codex.enemies[type].seen++;
+  maybeLogFamilyDiscovery(def.family);
 }
 
 function rollEnemyDrops(enemyType) {
@@ -1992,6 +2070,7 @@ function enterTown(message = "Returned to town.") {
   player.resourceCurrent = player.resourceMax;
   logAction(message);
   logAction("You rest under Ashroot's lanterns and recover your strength.");
+  maybeLogTownTierWelcome();
   setAtmosphereBanner("town");
   saveGame();
 }
@@ -2239,6 +2318,7 @@ ${getTownStatusNote()}
 
   if (state === "MERCHANT") {
     let text = `[${getMerchantMenuLabel().toUpperCase()}]\nSell items:\n`;
+    text += `<span class="codex-note">${getMerchantFlavorLine()}</span>\n\n`;
     player.inventory.forEach((item, i) => {
       if (isMaterial(item)) return;
       text += `${i}: ${renderItemNameSpan(item)} `;
@@ -2289,6 +2369,7 @@ ${getTownStatusNote()}
 
   if (state === "GUILD") {
     let text = `[${getGuildMenuLabel().toUpperCase()}]\nSell monster materials:\n`;
+    text += `<span class="codex-note">${getGuildFlavorLine()}</span>\n\n`;
     player.inventory.forEach((item, i) => {
       if (!isMaterial(item)) return;
       normalizeMaterialStack(item);
@@ -2309,6 +2390,7 @@ ${getTownStatusNote()}
 
   if (state === "BLACKSMITH") {
     let text = "[BLACKSMITH]\nUpgrade gear (cost 10):\n";
+    text += `<span class="codex-note">${getBlacksmithFlavorLine()}</span>\n\n`;
     Object.entries(player.equipment).forEach(([slot, item], i) => {
       if (item) {
         text += `${i}: ${slot} ${renderItemNameSpan(item)} `;
