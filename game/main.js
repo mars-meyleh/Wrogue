@@ -13,6 +13,9 @@ let codexTab = "CREATURES";
 let codexSelection = 0;
 let codexEquipmentView = "BASES";
 let showActionLog = true;
+let loadSlotSelection = 0;
+let deleteConfirmSlot = null;
+let currentSaveSlot = 1;
 let visualFlash = null;
 let atmosphereBanner = "";
 let atmosphereBannerTimeoutId = null;
@@ -1985,7 +1988,7 @@ function attemptCraftRecipe(recipe) {
   }
 
   calculateStats();
-  saveGame();
+  saveGame(currentSaveSlot);
 }
 
 const ENEMY_DEFS = {
@@ -2840,18 +2843,65 @@ function calculateStats() {
   if (player.hp > player.maxHp) player.hp = player.maxHp;
 }
 
-function saveGame() {
-  localStorage.setItem("save", JSON.stringify({
+function saveGame(slotIndex = 1) {
+  const slotKey = `save_${slotIndex}`;
+  localStorage.setItem(slotKey, JSON.stringify({
     saveVersion: SAVE_VERSION,
     player,
     dungeon,
     codex,
-    world
+    world,
+    savedAt: new Date().toISOString()
   }));
 }
 
-function loadGame() {
-  let data = localStorage.getItem("save");
+function getAllSaves() {
+  const saves = {};
+  for (let i = 1; i <= 5; i++) {
+    const slotKey = `save_${i}`;
+    const data = localStorage.getItem(slotKey);
+    if (data) {
+      try {
+        saves[i] = JSON.parse(data);
+      } catch(err) {
+        saves[i] = null;
+      }
+    }
+  }
+  return saves;
+}
+
+function getFirstFreeSaveSlot() {
+  const saves = getAllSaves();
+  for (let i = 1; i <= 5; i++) {
+    if (!saves[i]) return i;
+  }
+  return 1;
+}
+
+function deleteSaveSlot(slotIndex) {
+  const slotKey = `save_${slotIndex}`;
+  localStorage.removeItem(slotKey);
+}
+
+function getSlotInfo(save) {
+  if (!save) return null;
+  try {
+    const cls = save.player?.class || "?";
+    const floor = save.dungeon?.floor || 1;
+    const gold = save.player?.gold || 0;
+    const hp = save.player?.hp ?? "?";
+    const maxHp = save.player?.maxHp ?? "?";
+    const savedAt = save.savedAt ? new Date(save.savedAt).toLocaleString() : "Unknown";
+    return { cls, floor, gold, hp, maxHp, savedAt };
+  } catch(err) {
+    return null;
+  }
+}
+
+function loadGame(slotIndex = 1) {
+  const slotKey = `save_${slotIndex}`;
+  let data = localStorage.getItem(slotKey);
   if (!data) return false;
 
   let save = migrateSaveData(JSON.parse(data));
@@ -2931,6 +2981,7 @@ function loadGame() {
     player.equipment[slot] = normalizeGearItem(player.equipment[slot]);
   }
 
+  currentSaveSlot = slotIndex;
   return true;
 }
 
@@ -2944,7 +2995,7 @@ function enterTown(message = "Returned to town.") {
   logAction("You rest under Ashroot's lanterns and recover your strength.");
   maybeLogTownTierWelcome();
   setAtmosphereBanner("town");
-  saveGame();
+  saveGame(currentSaveSlot);
 }
 
 function startGame() {
@@ -2955,6 +3006,7 @@ function startGame() {
   world = createDefaultWorldState();
   inventoryTab = "GEAR";
   inventorySelection = 0;
+  currentSaveSlot = getFirstFreeSaveSlot();
 
   player.x = 1;
   player.y = 1;
@@ -2974,7 +3026,7 @@ function startGame() {
   };
 
   turn = 0;
-  actionLog = ["A new journey begins."];
+  actionLog = ["A new journey begins.", `This journey is bound to slot ${currentSaveSlot}.`];
 
   if (player.class === "witch") {
     player.maxHp = 8;
@@ -2988,7 +3040,7 @@ function startGame() {
   calculateStats();
   refreshTownProgression();
   recordDeepestFloor();
-  saveGame();
+  saveGame(currentSaveSlot);
 }
 
 
@@ -3075,30 +3127,43 @@ function draw() {
   }
 
   if (state === "LOAD_SCREEN") {
-    let saveRaw = localStorage.getItem("save");
-    let saveText;
-    if (!saveRaw) {
-      saveText = `  <span class="codex-meta">No saved game found.</span>\n\n  <span class="codex-meta">ESC — back to menu</span>`;
-    } else {
-      try {
-        let s = JSON.parse(saveRaw);
-        let cls = s.player?.class || "unknown";
-        let floor = s.dungeon?.floor || 1;
-        let gold = s.player?.gold || 0;
-        let hp = s.player?.hp ?? "?";
-        let maxHp = s.player?.maxHp ?? "?";
-        let clsClass = cls === "witch" ? "rare" : "epic";
-        saveText =
-`  <span class="codex-note">Class: <span class="${clsClass}">${cls}</span> | Floor ${floor} | HP ${hp}/${maxHp} | Gold ${gold}g</span>
-
-  <span class="codex-section">1. Continue save</span>
-  <span class="codex-meta">ESC — back to menu</span>`;
-      } catch(err) {
-        saveText = `  <span class="codex-meta">Save data corrupted.</span>\n\n  <span class="codex-meta">ESC — back to menu</span>`;
+    const saves = getAllSaves();
+    let slotsHtml = "";
+    for (let i = 1; i <= 5; i++) {
+      const save = saves[i];
+      const isSelected = i === loadSlotSelection;
+      const marker = isSelected ? "▶" : " ";
+      const slotClass = isSelected ? "codex-section" : "codex-note";
+      
+      if (save) {
+        const info = getSlotInfo(save);
+        if (info) {
+          const clsClass = info.cls === "witch" ? "rare" : "epic";
+          slotsHtml += `\n  <span class="${slotClass}">${marker} Slot ${i} — <span class="${clsClass}">${info.cls}</span> Fl${info.floor} HP${info.hp}/${info.maxHp} ${info.gold}g</span>`;
+        }
+      } else {
+        slotsHtml += `\n  <span class="${slotClass}">${marker} Slot ${i} — [empty]</span>`;
       }
     }
-    gameEl.innerHTML = `<span class="codex-title">[LOAD GAME]</span>\n\n${saveText}`;
-    uiEl.innerHTML = `<span class="codex-meta">Load your last journey.</span>`;
+    const saveText = `${slotsHtml}\n\n  <span class="codex-meta">↑↓ Navigate | <span class="epic">1</span> Load | <span class="epic">R</span> Delete | <span class="epic">ESC</span> Back</span>`;
+    gameEl.innerHTML = `<span class="codex-title">[LOAD GAME — 5 SLOTS]</span>\n${saveText}`;
+    uiEl.innerHTML = `<span class="codex-meta">Select a save slot.</span>`;
+    return;
+  }
+
+  if (state === "CONFIRM_DELETE_SAVE") {
+    const saves = getAllSaves();
+    const save = saves[deleteConfirmSlot];
+    let confirmText = "";
+    if (save) {
+      const info = getSlotInfo(save);
+      if (info) {
+        const clsClass = info.cls === "witch" ? "rare" : "epic";
+        confirmText = `\n  You are about to erase the memories of\n  a <span class="${clsClass}">${info.cls}</span> adventurer on floor ${info.floor}.\n\n  <span class="codex-section">Y — Confirm deletion</span>\n  <span class="codex-section">N — Cancel</span>`;
+      }
+    }
+    gameEl.innerHTML = `<span class="codex-title">[CONFIRM DELETION]</span>${confirmText}`;
+    uiEl.innerHTML = `<span class="codex-meta">This cannot be undone.</span>`;
     return;
   }
 
@@ -3131,7 +3196,7 @@ Kill what you find. Loot what you can. Come back alive.</span>
   K         Toggle codex
   L         Toggle action log
   Tab       Switch tabs / Open inventory
-  C / I     Open inventory (dungeon)
+  I         Open inventory (dungeon)
   X         Return to town (dungeon)
   M         Main menu (town)
   Esc       Back / Close panel</span>
@@ -3454,7 +3519,7 @@ function drawUI() {
   }
 
   text += "\n=== HINTS ===\n";
-  text += `<span class="codex-meta">Inventory: C / I / Tab\nCodex: K</span>\n`;
+  text += `<span class="codex-meta">Inventory: I\nCodex: K</span>\n`;
   text += `${getClassFlavorHint()}\n`;
 
   uiEl.innerHTML = text;
@@ -3556,7 +3621,7 @@ function equipItem(index, shouldLog = true) {
 document.addEventListener("keydown", (e) => {
 
   // ===== CODEX (global) =====
-  const menuScreens = ["MENU", "CLASS_SELECT", "LOAD_SCREEN", "LORE_INTRO", "SETTINGS"];
+  const menuScreens = ["MENU", "CLASS_SELECT", "LOAD_SCREEN", "CONFIRM_DELETE_SAVE", "LORE_INTRO", "SETTINGS"];
 
   if (e.key.toLowerCase() === "k" && state !== "CODEX" && !menuScreens.includes(state)) {
     codexReturnState = state;
@@ -3610,7 +3675,10 @@ document.addEventListener("keydown", (e) => {
 
   if (state === "MENU") {
     if (e.key === "1") state = "CLASS_SELECT";
-    if (e.key === "2") state = "LOAD_SCREEN";
+    if (e.key === "2") {
+      state = "LOAD_SCREEN";
+      loadSlotSelection = 1;
+    }
     if (e.key === "3") state = "SETTINGS";
     draw();
     return;
@@ -3633,13 +3701,40 @@ document.addEventListener("keydown", (e) => {
   if (state === "LOAD_SCREEN") {
     if (e.key === "Escape") {
       state = "MENU";
-    } else if (e.key === "1") {
-      if (loadGame()) {
+      loadSlotSelection = 0;
+    } else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+      loadSlotSelection = loadSlotSelection === 1 ? 5 : loadSlotSelection - 1;
+    } else if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+      loadSlotSelection = loadSlotSelection === 5 ? 1 : loadSlotSelection + 1;
+    } else if (e.key === "1" || e.key === "Enter") {
+      if (loadGame(loadSlotSelection)) {
         state = "TOWN";
-        logAction("Loaded saved game.");
+        logAction(`Loaded save from slot ${loadSlotSelection}.`);
       } else {
-        state = "MENU";
+        logAction("Slot is empty.");
       }
+    } else if (e.key === "r" || e.key === "R") {
+      const saves = getAllSaves();
+      if (saves[loadSlotSelection]) {
+        state = "CONFIRM_DELETE_SAVE";
+        deleteConfirmSlot = loadSlotSelection;
+      } else {
+        logAction("Slot is empty.");
+      }
+    }
+    draw();
+    return;
+  }
+
+  if (state === "CONFIRM_DELETE_SAVE") {
+    if (e.key === "y" || e.key === "Y") {
+      deleteSaveSlot(deleteConfirmSlot);
+      logAction(`Slot ${deleteConfirmSlot} deleted.`);
+      state = "LOAD_SCREEN";
+      deleteConfirmSlot = null;
+    } else if (e.key === "n" || e.key === "N" || e.key === "Escape") {
+      state = "LOAD_SCREEN";
+      deleteConfirmSlot = null;
     }
     draw();
     return;
@@ -3663,9 +3758,9 @@ document.addEventListener("keydown", (e) => {
       state = codexReturnState;
     } else if (state === "INVENTORY") {
       state = inventoryReturnState;
-      if (state === "TOWN") saveGame();
+      if (state === "TOWN") saveGame(currentSaveSlot);
     } else if (state === "TOWN") {
-      saveGame();
+      saveGame(currentSaveSlot);
       state = "MENU";
     } else if (state !== "MENU") {
       enterTown();
@@ -3689,7 +3784,7 @@ document.addEventListener("keydown", (e) => {
       state = "INVENTORY";
     }
     if (e.key.toLowerCase() === "m") {
-      saveGame();
+      saveGame(currentSaveSlot);
       state = "MENU";
     }
 
@@ -3969,7 +4064,7 @@ document.addEventListener("keydown", (e) => {
   }
 
   generateRoom();
-  saveGame();
+  saveGame(currentSaveSlot);
   draw();
   return;
 }
