@@ -84,7 +84,7 @@ const CODEX_TOWN_ENTRIES = [
     title: "Blacksmith",
     className: "codex-note",
     summary: "Improves worn equipment.",
-    detail: "The blacksmith turns gold into durability and edge. Later, crafting hooks can live here too."
+    detail: "The blacksmith turns gold into durability and edge. Craft throughput now also lowers upgrade costs across town services."
   },
   {
     id: "guild",
@@ -108,6 +108,34 @@ const CODEX_LORE_ENTRIES = [
     className: "codex-note",
     summary: "Kill, loot, and return alive.",
     detail: "The terms are simple: descend, recover valuables, document threats, and make it back to town breathing."
+  },
+  {
+    id: "ashroot_origin",
+    title: "Root of Embers",
+    className: "codex-note",
+    summary: "Ashroot was built around an older structure.",
+    detail: "Ashroot was not founded as a town. Early records call this place the Root of Embers: a vast, ancient form with roots plunging below bedrock. Whether it was tree, engine, or shrine is still disputed. People settled here for promise, not safety."
+  },
+  {
+    id: "fall_fragment_i",
+    title: "Fall Fragment I",
+    className: "codex-note",
+    summary: "Fragmented account recovered from guild archive.",
+    detail: "\"They dug too deep, and found something that answered.\""
+  },
+  {
+    id: "fall_fragment_ii",
+    title: "Fall Fragment II",
+    className: "codex-note",
+    summary: "Fragmented account recovered from guild archive.",
+    detail: "\"The roots were not dead. Only waiting.\""
+  },
+  {
+    id: "fall_fragment_iii",
+    title: "Fall Fragment III",
+    className: "codex-note",
+    summary: "Fragmented account recovered from guild archive.",
+    detail: "\"The fire did not spread. It rose.\""
   },
   {
     id: "dungeon_notes",
@@ -172,6 +200,13 @@ function createDefaultWorldState() {
       seenMaterialTiers: [],
       lastWelcomedTier: 0
     },
+    crafting: {
+      attempts: 0,
+      successes: 0,
+      failures: 0,
+      witchRites: 0,
+      orcForgings: 0
+    },
     featureFlags: {
       classExpansionReady: false,
       travelMapReady: false,
@@ -228,6 +263,10 @@ function normalizeWorldState(savedWorld) {
       ...(worldState.narrative || {}),
       seenFamilies: Array.isArray(worldState.narrative?.seenFamilies) ? worldState.narrative.seenFamilies : defaults.narrative.seenFamilies,
       seenMaterialTiers: Array.isArray(worldState.narrative?.seenMaterialTiers) ? worldState.narrative.seenMaterialTiers : defaults.narrative.seenMaterialTiers
+    },
+    crafting: {
+      ...defaults.crafting,
+      ...(worldState.crafting || {})
     },
     featureFlags: {
       ...defaults.featureFlags,
@@ -1548,6 +1587,407 @@ const MATERIAL_DEFS = {
   }
 };
 
+const CRAFTING_RECIPES = {
+  witch: [
+    {
+      id: "witch_ashthread_charm",
+      name: "Ashthread Charm",
+      path: "Charm Weaving",
+      successRate: 0.78,
+      requirements: [
+        { id: "silk_thread", qty: 1 },
+        { id: "bone_fragment", qty: 2 },
+        { id: "cloth_rag", qty: 1 }
+      ],
+      reward: {
+        baseId: "crafted_ashthread_charm",
+        name: "Ashthread Charm",
+        type: "accessory",
+        slot: "necklace",
+        part: "necklace",
+        hands: 0,
+        rarity: "uncommon",
+        atk: 0,
+        def: 1,
+        hp: 2,
+        crit: 1,
+        dodge: 0,
+        codexText: "A woven ward-charm that steadies pulse and breathing in omen-heavy halls."
+      }
+    },
+    {
+      id: "witch_venom_sigil",
+      name: "Venom Sigil Ring",
+      path: "Rune Inscription",
+      successRate: 0.72,
+      requirements: [
+        { id: "venom_sac", qty: 1 },
+        { id: "bone_fragment", qty: 1 },
+        { id: "snake_skin", qty: 1 }
+      ],
+      reward: {
+        baseId: "crafted_venom_sigil_ring",
+        name: "Venom Sigil Ring",
+        type: "accessory",
+        slot: "ring",
+        part: "ring",
+        hands: 0,
+        rarity: "rare",
+        atk: 1,
+        def: 0,
+        hp: 0,
+        crit: 3,
+        dodge: 1,
+        codexText: "A ring etched with toxin-lines that rewards precise strikes."
+      }
+    },
+    {
+      id: "witch_hollows_focus",
+      name: "Hollows Focus",
+      path: "Accessory Infusion",
+      successRate: 0.66,
+      requirements: [
+        { id: "arcane_lens", qty: 1 },
+        { id: "ethereal_essence", qty: 1 },
+        { id: "silk_thread", qty: 1 }
+      ],
+      reward: {
+        baseId: "crafted_hollows_focus",
+        name: "Hollows Focus",
+        type: "staff",
+        slot: "mainHand",
+        subType: "focus",
+        hands: 1,
+        rarity: "rare",
+        atk: 5,
+        def: 1,
+        hp: 2,
+        crit: 2,
+        dodge: 0,
+        codexText: "A focus-staff saturated with essence from the lower dark."
+      }
+    },
+    {
+      id: "witch_emberroot_diadem",
+      name: "Emberroot Diadem",
+      path: "Root Sigil Crownwork",
+      successRate: 0.52,
+      unlockMilestone: "guild_attention_earned",
+      minDeepestFloor: 8,
+      requirements: [
+        { id: "ethereal_essence", qty: 2 },
+        { id: "arcane_lens", qty: 2 },
+        { id: "crown_fragment", qty: 1 }
+      ],
+      reward: {
+        baseId: "crafted_emberroot_diadem",
+        name: "Emberroot Diadem",
+        type: "armor",
+        slot: "head",
+        part: "head",
+        hands: 0,
+        rarity: "epic",
+        atk: 2,
+        def: 4,
+        hp: 5,
+        crit: 3,
+        dodge: 1,
+        codexText: "A ritual diadem anchored with crown shards from the old collapse."
+      }
+    }
+  ],
+  orc: [
+    {
+      id: "orc_salvage_edge",
+      name: "Salvage Edge",
+      path: "Field Forge",
+      successRate: 0.80,
+      requirements: [
+        { id: "scrap_metal", qty: 3 },
+        { id: "stone_dust", qty: 1 }
+      ],
+      reward: {
+        baseId: "crafted_salvage_edge",
+        name: "Salvage Edge",
+        type: "weapon",
+        slot: "mainHand",
+        subType: "blade",
+        hands: 1,
+        rarity: "uncommon",
+        atk: 5,
+        def: 0,
+        hp: 1,
+        crit: 1,
+        dodge: 0,
+        codexText: "A rough blade hammered from mixed scrap and battle judgment."
+      }
+    },
+    {
+      id: "orc_platebind_vest",
+      name: "Platebind Vest",
+      path: "War Kit Assembly",
+      successRate: 0.74,
+      requirements: [
+        { id: "chitin_plate", qty: 2 },
+        { id: "cloth_rag", qty: 2 },
+        { id: "scrap_metal", qty: 1 }
+      ],
+      reward: {
+        baseId: "crafted_platebind_vest",
+        name: "Platebind Vest",
+        type: "armor",
+        slot: "chest",
+        part: "chest",
+        hands: 0,
+        rarity: "rare",
+        atk: 0,
+        def: 4,
+        hp: 3,
+        crit: 0,
+        dodge: -1,
+        codexText: "A chest rig bound for front pressure and long retreat lines."
+      }
+    },
+    {
+      id: "orc_linebreaker_boots",
+      name: "Linebreaker Boots",
+      path: "Field Forge",
+      successRate: 0.68,
+      requirements: [
+        { id: "snake_skin", qty: 2 },
+        { id: "chitin_plate", qty: 1 },
+        { id: "scrap_metal", qty: 2 }
+      ],
+      reward: {
+        baseId: "crafted_linebreaker_boots",
+        name: "Linebreaker Boots",
+        type: "armor",
+        slot: "boots",
+        part: "boots",
+        hands: 0,
+        rarity: "rare",
+        atk: 1,
+        def: 2,
+        hp: 1,
+        crit: 0,
+        dodge: 3,
+        codexText: "Boots tuned for pressure-footing and sudden flanking steps."
+      }
+    },
+    {
+      id: "orc_bastionbreaker_maul",
+      name: "Bastionbreaker Maul",
+      path: "Warden-Break Forge",
+      successRate: 0.55,
+      unlockMilestone: "deep_paths_opened",
+      minDeepestFloor: 6,
+      requirements: [
+        { id: "core_stone", qty: 1 },
+        { id: "chitin_plate", qty: 3 },
+        { id: "scrap_metal", qty: 4 }
+      ],
+      reward: {
+        baseId: "crafted_bastionbreaker_maul",
+        name: "Bastionbreaker Maul",
+        type: "twoHandWeapon",
+        slot: "mainHand",
+        subType: "heavy",
+        hands: 2,
+        rarity: "epic",
+        atk: 10,
+        def: 1,
+        hp: 3,
+        crit: 1,
+        dodge: -2,
+        codexText: "A two-hand crusher built from bastion salvage and core stone spine."
+      }
+    }
+  ]
+};
+
+function getCraftingRecipesForClass() {
+  return CRAFTING_RECIPES[player.class] || [];
+}
+
+function getDeepestUnlockedFloor() {
+  let values = Object.values(world.biomeProgress?.deepestFloorByBiome || {});
+  let deepestTracked = values.length ? Math.max(...values) : 1;
+  return Math.max(dungeon.floor || 1, deepestTracked);
+}
+
+function getCraftingRecipeLockReason(recipe) {
+  if (recipe.unlockMilestone && !hasWorldMilestone(recipe.unlockMilestone)) {
+    return `locked: milestone ${recipe.unlockMilestone}`;
+  }
+
+  let deepestFloor = getDeepestUnlockedFloor();
+  if (recipe.minDeepestFloor && deepestFloor < recipe.minDeepestFloor) {
+    return `locked: deepest floor ${deepestFloor}/${recipe.minDeepestFloor}`;
+  }
+
+  return "";
+}
+
+function isCraftingRecipeUnlocked(recipe) {
+  return getCraftingRecipeLockReason(recipe) === "";
+}
+
+function getMaterialCount(materialId) {
+  let total = 0;
+  for (let item of player.inventory) {
+    if (!isMaterial(item) || item.materialId !== materialId) continue;
+    normalizeMaterialStack(item);
+    total += item.quantity;
+  }
+  return total;
+}
+
+function hasMaterialRequirements(requirements) {
+  return requirements.every(req => getMaterialCount(req.id) >= req.qty);
+}
+
+function consumeMaterialRequirements(requirements) {
+  if (!hasMaterialRequirements(requirements)) return false;
+
+  for (let req of requirements) {
+    let remaining = req.qty;
+    for (let i = 0; i < player.inventory.length && remaining > 0; i++) {
+      let item = player.inventory[i];
+      if (!isMaterial(item) || item.materialId !== req.id) continue;
+      normalizeMaterialStack(item);
+
+      let take = Math.min(remaining, item.quantity);
+      let unitValue = Math.max(1, Math.round(item.totalValue / item.quantity));
+
+      item.quantity -= take;
+      item.totalValue -= unitValue * take;
+      remaining -= take;
+
+      if (item.quantity <= 0) {
+        player.inventory.splice(i, 1);
+        i--;
+      } else {
+        item.value = Math.max(1, Math.round(item.totalValue / item.quantity));
+      }
+    }
+  }
+
+  return true;
+}
+
+function formatMaterialRequirements(requirements) {
+  return requirements.map(req => {
+    let def = getMaterialDefinition(req.id);
+    let owned = getMaterialCount(req.id);
+    return `${def.name} ${owned}/${req.qty}`;
+  }).join(" | ");
+}
+
+function buildCraftedItemFromRecipe(recipe) {
+  let reward = recipe.reward;
+  return normalizeGearItem({
+    id: reward.baseId,
+    baseId: reward.baseId,
+    baseName: reward.name,
+    name: reward.name,
+    type: reward.type,
+    slot: reward.slot,
+    part: reward.part || null,
+    subType: reward.subType || null,
+    hands: reward.hands || 0,
+    rarity: reward.rarity || "uncommon",
+    atk: reward.atk || 0,
+    def: reward.def || 0,
+    hp: reward.hp || 0,
+    crit: reward.crit || 0,
+    dodge: reward.dodge || 0,
+    effects: [],
+    prefixId: null,
+    prefixName: null,
+    suffixId: null,
+    suffixName: null,
+    isUnique: false,
+    craftedRecipeId: recipe.id,
+    craftedPath: recipe.path,
+    codexText: reward.codexText || "Crafted in Ashroot.",
+    specialEffect: ""
+  });
+}
+
+function getCraftingTier() {
+  let successes = world.crafting.successes || 0;
+  if (successes >= 10) return 3;
+  if (successes >= 5) return 2;
+  if (successes >= 2) return 1;
+  return 0;
+}
+
+function getGuildDemandBonusPerUnit() {
+  return getCraftingTier();
+}
+
+function getBlacksmithUpgradeCost() {
+  let discount = getCraftingTier();
+  return Math.max(6, 10 - discount);
+}
+
+function getCraftingFlavorLine() {
+  let tier = getCraftingTier();
+  if (player.class === "witch") {
+    if (tier === 0) return "A chalk circle, salvage thread, and careful breath begin each rite.";
+    if (tier === 1) return "Your charms now move through Ashroot as reliable ward stock.";
+    if (tier === 2) return "Guild scribes now request your rune notation with each delivery.";
+    return "Caravan buyers ask for your infused charms before they ask for ore.";
+  }
+  if (player.class === "orc") {
+    if (tier === 0) return "Rough forge, rough tools, clean intent. Field work starts here.";
+    if (tier === 1) return "Your forged kit now sets expected durability for hunt crews.";
+    if (tier === 2) return "Guild quartermasters benchmark new contracts against your field gear.";
+    return "Outside crews now request your forge marks on frontline orders.";
+  }
+  return "Crafting benches stand ready.";
+}
+
+function attemptCraftRecipe(recipe) {
+  if (!isCraftingRecipeUnlocked(recipe)) {
+    logAction(getCraftingRecipeLockReason(recipe));
+    return;
+  }
+
+  if (!hasMaterialRequirements(recipe.requirements)) {
+    logAction("Missing materials for that recipe.");
+    return;
+  }
+
+  // Materials are consumed on both success and failure to keep stakes meaningful.
+  consumeMaterialRequirements(recipe.requirements);
+  world.crafting.attempts++;
+  if (player.class === "witch") world.crafting.witchRites++;
+  if (player.class === "orc") world.crafting.orcForgings++;
+
+  if (Math.random() <= recipe.successRate) {
+    let item = buildCraftedItemFromRecipe(recipe);
+    player.inventory.push(item);
+    registerEquipmentSeen(item);
+    world.crafting.successes++;
+    logAction(`Craft success: ${renderItemNameSpan(item)} added to inventory.`);
+  } else {
+    world.crafting.failures++;
+    if (player.class === "witch") {
+      addMaterialToInventory(createMaterialItem("stone_dust"));
+      logAction("Craft failed. Components burned down to Stone Dust.");
+    } else if (player.class === "orc") {
+      addMaterialToInventory(createMaterialItem("scrap_metal"));
+      logAction("Craft failed. The forge spat back salvageable scrap.");
+    } else {
+      logAction("Craft failed. Components were consumed.");
+    }
+  }
+
+  calculateStats();
+  saveGame();
+}
+
 const ENEMY_DEFS = {
   goblin: {
     name: "Goblin",
@@ -1902,6 +2342,10 @@ function renderCodexDetail(entry, tab) {
       let rarity = entry.highestRarity || entry.rarity || "common";
       let prefixes = Object.values(entry.discoveredPrefixes || {});
       let suffixes = Object.values(entry.discoveredSuffixes || {});
+      let craftedSourceIds = Object.keys(entry.craftedRecipes || {});
+      let craftedSourceLine = craftedSourceIds.length
+        ? `\n<span class="codex-meta">crafted source: ${craftedSourceIds.join(", ")}</span>`
+        : "";
       let descriptionLine = entry.description
         ? `\n<span class="codex-meta">${entry.description}</span>`
         : "";
@@ -1910,6 +2354,7 @@ function renderCodexDetail(entry, tab) {
         + `<span class="codex-meta">seen: ${entry.seen} | equipped: ${entry.equipped}</span>\n`
         + `<span class="codex-note">best rolls: +${entry.bestAtk || 0} ATK / +${entry.bestDef || 0} DEF / +${entry.bestHp || 0} HP / +${entry.bestCrit || 0} CRIT / +${entry.bestDodge || 0} DODGE</span>\n`
         + `<span class="codex-note">prefixes: ${prefixes.length ? prefixes.join(", ") : "none"} | suffixes: ${suffixes.length ? suffixes.join(", ") : "none"}</span>`
+        + craftedSourceLine
         + descriptionLine;
     }
 
@@ -2236,7 +2681,9 @@ function registerEquipmentSeen(item) {
       bestCrit: 0,
       bestDodge: 0,
       discoveredPrefixes: {},
-      discoveredSuffixes: {}
+      discoveredSuffixes: {},
+      craftedRecipes: {},
+      craftedCount: 0
     };
   }
 
@@ -2252,6 +2699,10 @@ function registerEquipmentSeen(item) {
   codex.equipment[key].description = codex.equipment[key].description || item.codexText || "";
   if (item.prefixId && item.prefixName) codex.equipment[key].discoveredPrefixes[item.prefixId] = item.prefixName;
   if (item.suffixId && item.suffixName) codex.equipment[key].discoveredSuffixes[item.suffixId] = item.suffixName;
+  if (item.craftedRecipeId) {
+    codex.equipment[key].craftedRecipes[item.craftedRecipeId] = item.craftedPath || "crafted";
+    codex.equipment[key].craftedCount = (codex.equipment[key].craftedCount || 0) + 1;
+  }
 }
 
 function registerEquipmentEquipped(item) {
@@ -2459,6 +2910,12 @@ function loadGame() {
       }
       if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "discoveredSuffixes")) {
         codex.equipment[key].discoveredSuffixes = {};
+      }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "craftedRecipes")) {
+        codex.equipment[key].craftedRecipes = {};
+      }
+      if (!Object.prototype.hasOwnProperty.call(codex.equipment[key], "craftedCount")) {
+        codex.equipment[key].craftedCount = 0;
       }
     }
   }
@@ -2697,6 +3154,7 @@ Kill what you find. Loot what you can. Come back alive.</span>
 2. ${getMerchantMenuLabel()}
 3. Blacksmith
 4. ${getGuildMenuLabel()}
+5. Class Crafting
 C. Inventory
 K. Codex
 M. Main Menu
@@ -2769,11 +3227,15 @@ ${getTownStatusNote()}
   if (state === "GUILD") {
     let text = `[${getGuildMenuLabel().toUpperCase()}]\nSell monster materials:\n`;
     text += `<span class="codex-note">${getGuildFlavorLine()}</span>\n\n`;
+    let guildBonus = getGuildDemandBonusPerUnit();
+    text += `<span class="codex-meta">craft demand bonus: +${guildBonus}g per unit</span>\n\n`;
     player.inventory.forEach((item, i) => {
       if (!isMaterial(item)) return;
       normalizeMaterialStack(item);
+      let unitValue = item.value + guildBonus;
+      let totalValue = unitValue * item.quantity;
       text += `${i}: ${renderMaterialSpan(item)} x${item.quantity} `;
-      text += `<span class=\"codex-meta\">(${item.tier}, ${item.value}g ea / ${item.totalValue}g total)</span>\n`;
+      text += `<span class=\"codex-meta\">(${item.tier}, ${unitValue}g ea / ${totalValue}g total)</span>\n`;
     });
     if (world.town.contractBoardUnlocked) {
       text += "\n<span class=\"codex-note\">Requests are beginning to arrive from beyond Ashroot, but the board is not active yet.</span>\n";
@@ -2788,8 +3250,10 @@ ${getTownStatusNote()}
   }
 
   if (state === "BLACKSMITH") {
-    let text = "[BLACKSMITH]\nUpgrade gear (cost 10):\n";
+    let upgradeCost = getBlacksmithUpgradeCost();
+    let text = `[BLACKSMITH]\nUpgrade gear (cost ${upgradeCost}):\n`;
     text += `<span class="codex-note">${getBlacksmithFlavorLine()}</span>\n\n`;
+    text += `<span class="codex-meta">craft network discount: ${10 - upgradeCost}g</span>\n\n`;
     Object.entries(player.equipment).forEach(([slot, item], i) => {
       if (item) {
         text += `${i}: ${slot} ${renderItemNameSpan(item)} `;
@@ -2799,6 +3263,32 @@ ${getTownStatusNote()}
       }
     });
     text += "\nESC to exit";
+    text += renderActionLog();
+    gameEl.innerHTML = text;
+    drawUI();
+    return;
+  }
+
+  if (state === "CRAFTING") {
+    let recipes = getCraftingRecipesForClass();
+    let text = "[CLASS CRAFTING]\n";
+    text += `<span class="codex-note">${getCraftingFlavorLine()}</span>\n\n`;
+    text += `<span class="codex-meta">attempts:${world.crafting.attempts} successes:${world.crafting.successes} failures:${world.crafting.failures}</span>\n\n`;
+
+    if (!recipes.length) {
+      text += "No class recipes available yet.\n";
+    } else {
+      recipes.forEach((recipe, i) => {
+        let odds = Math.round(recipe.successRate * 100);
+        let lockReason = getCraftingRecipeLockReason(recipe);
+        let status = lockReason ? lockReason : (hasMaterialRequirements(recipe.requirements) ? "ready" : "missing mats");
+        text += `${i}: <span class="${recipe.reward.rarity || "uncommon"}">${recipe.name}</span> `;
+        text += `<span class="codex-meta">[${recipe.path}] ${odds}% ${status}</span>\n`;
+        text += `<span class="codex-meta">    ${formatMaterialRequirements(recipe.requirements)}</span>\n`;
+      });
+    }
+
+    text += "\n[number] attempt craft\nESC to exit";
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -2915,6 +3405,7 @@ function drawUI() {
     text += `Home: ${world.town.playerHomeUnlocked ? "open" : "not ready"}\n`;
     text += `Trade: ${world.town.merchantGuildUnlocked ? "merchant guild forming" : "single merchant stall"}\n`;
     text += `Guild: ${world.town.contractBoardUnlocked ? "board prepared" : "buyers' desk only"}\n`;
+    text += `Craft: tier ${getCraftingTier()} (${world.crafting.successes} successes)\n`;
     text += `Depth Track: ${biome.name}\n`;
     text += `\n${getTownStatusNote()}\n`;
     if (atmosphereBanner) text += `\n<span class="flow-banner">${atmosphereBanner}</span>\n`;
@@ -3192,6 +3683,7 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "2") state = "MERCHANT";
     if (e.key === "3") state = "BLACKSMITH";
     if (e.key === "4") state = "GUILD";
+    if (e.key === "5") state = "CRAFTING";
     if (e.key.toLowerCase() === "c") {
       inventoryReturnState = "TOWN";
       state = "INVENTORY";
@@ -3248,18 +3740,19 @@ document.addEventListener("keydown", (e) => {
     }
 
     normalizeMaterialStack(item);
+    let guildBonus = getGuildDemandBonusPerUnit();
+    let unitValue = item.value + guildBonus;
 
     if (e.shiftKey) {
-      let stackTotal = item.totalValue;
+      let stackTotal = unitValue * item.quantity;
       let stackCount = item.quantity;
       player.gold += stackTotal;
       player.inventory.splice(i, 1);
       logAction(`Sold ${item.name} x${stackCount} for ${stackTotal}g.`);
     } else {
-      let unitValue = Math.max(1, Math.round(item.totalValue / item.quantity));
       player.gold += unitValue;
       item.quantity -= 1;
-      item.totalValue -= unitValue;
+      item.totalValue -= item.value;
 
       if (item.quantity <= 0) {
         player.inventory.splice(i, 1);
@@ -3279,17 +3772,32 @@ document.addEventListener("keydown", (e) => {
     let keys = Object.keys(player.equipment);
     let slot = keys[keyIndex];
     let item = player.equipment[slot];
+    let upgradeCost = getBlacksmithUpgradeCost();
 
-    if (item && player.gold >= 10) {
+    if (item && player.gold >= upgradeCost) {
       item.atk += 1;
       item.def += 1;
-      player.gold -= 10;
+      player.gold -= upgradeCost;
       calculateStats();
-      logAction(`Upgraded ${slot} (+1 ATK / +1 DEF).`);
-    } else if (item && player.gold < 10) {
+      logAction(`Upgraded ${slot} (+1 ATK / +1 DEF) for ${upgradeCost}g.`);
+    } else if (item && player.gold < upgradeCost) {
       logAction("Not enough gold to upgrade.");
     }
 
+    draw();
+    return;
+  }
+
+  // ===== CRAFTING =====
+  if (state === "CRAFTING" && keyIndex !== null) {
+    let recipes = getCraftingRecipesForClass();
+    let recipe = recipes[keyIndex];
+    if (!recipe) {
+      draw();
+      return;
+    }
+
+    attemptCraftRecipe(recipe);
     draw();
     return;
   }
