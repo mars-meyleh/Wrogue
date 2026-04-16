@@ -3473,8 +3473,7 @@ function drawUI() {
   if (state === "TOWN") {
     let biome = getActiveBiomeDef();
     let text = `${getTownHeading()}\n`;
-    let deltaStr = renderHudDelta();
-  text += `HP: ${player.hp}/${player.maxHp}${deltaStr ? ` ${deltaStr}` : ""}\n`;
+    text += `HP: ${player.hp}/${player.maxHp}\n`;
     text += `Gold: ${player.gold}\n`;
     text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
     text += `Rebuild: Tier ${world.town.rebuildTier} [${world.town.districtState}]\n`;
@@ -3506,8 +3505,7 @@ function drawUI() {
 
   let text = `=== CHARACTER ===\n`;
   text += `Class: ${player.class || "unknown"}\n`;
-  let deltaStr = renderHudDelta();
-  text += `HP: ${player.hp}/${player.maxHp}${deltaStr ? ` ${deltaStr}` : ""}\n`;
+  text += `HP: ${player.hp}/${player.maxHp}\n`;
   text += `ATK: ${player.atk}\n`;
   text += `DEF: ${player.def}\n`;
   text += `CRIT: ${player.crit}%\n`;
