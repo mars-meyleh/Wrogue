@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Wrogue Tests</title>
+  <style>
+    body { background: #111; color: #ccc; font-family: monospace; padding: 2rem; }
+    h1 { color: #e0d5b0; margin-bottom: 0.5rem; }
+    .suite { margin-top: 1.5rem; }
+    .suite-name { color: #a0c8ff; font-size: 1.1rem; font-weight: bold; margin-bottom: 0.4rem; }
+    .pass { color: #5fd37a; }
+    .fail { color: #ff6b6b; font-weight: bold; }
+    .summary { margin-top: 2rem; font-size: 1.1rem; border-top: 1px solid #333; padding-top: 1rem; }
+    .summary.all-pass { color: #5fd37a; }
+    .summary.has-fail { color: #ff6b6b; }
+    pre { margin: 0; }
+  </style>
+</head>
+<body>
+  <!-- Stub DOM elements required by main.js at parse time -->
+  <div id="game"></div>
+  <div id="ui"></div>
+
+  <script>
+    // ── localStorage stub ─────────────────────────────────────────────────────
+    const _store = {};
+    window.localStorage = {
+      getItem: k => _store[k] ?? null,
+      setItem: (k, v) => { _store[k] = String(v); },
+      removeItem: k => { delete _store[k]; },
+      clear: () => { for (let k in _store) delete _store[k]; }
+    };
+
+    // ── Silence document keydown listeners so tests run deterministically ─────
+    const _origDocAdd = document.addEventListener.bind(document);
+    document.addEventListener = (type, ...rest) => {
+      if (type === "keydown") return;
+      _origDocAdd(type, ...rest);
+    };
+  </script>
+
+  <!-- Load the game -->
+  <script src="../main.js"></script>
+
+  <!-- Test runner + suites -->
+  <script src="tests.js"></script>
+</body>
+</html>

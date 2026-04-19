@@ -361,10 +361,119 @@ body {
   text-shadow: 0 0 8px #ff9900;
 }
 
+.tile-hit-player-damage {
+  animation: tileFlash 0.28s ease;
+  color: #ff9f9f !important;
+  text-shadow: 0 0 10px rgba(255, 82, 82, 0.9);
+}
+
 .tile-hit-poison {
   animation: tileFlash 0.28s ease;
   color: #7bdb4e !important;
   text-shadow: 0 0 8px #44aa00;
+}
+
+.tile-hit-ash {
+  animation: tileFlash 0.28s ease;
+  color: #ff9d73 !important;
+  text-shadow: 0 0 8px rgba(255, 122, 84, 0.85);
+}
+
+.tile-hit-stone {
+  animation: tileFlash 0.28s ease;
+  color: #d2c7ad !important;
+  text-shadow: 0 0 8px rgba(176, 162, 133, 0.85);
+}
+
+.tile-hit-echo {
+  animation: tileFlash 0.28s ease;
+  color: #8ec5ff !important;
+  text-shadow: 0 0 8px rgba(120, 171, 255, 0.85);
+}
+
+.tile-hit-hunt {
+  animation: tileFlash 0.28s ease;
+  color: #b9dd68 !important;
+  text-shadow: 0 0 8px rgba(140, 188, 47, 0.85);
+}
+
+.tile-hit-hexhand {
+  animation: tileFlash 0.28s ease;
+  color: #78e7ff !important;
+  text-shadow: 0 0 8px rgba(38, 198, 218, 0.85);
+}
+
+.tile-hit-brawl {
+  animation: tileFlash 0.28s ease;
+  color: #ffc47a !important;
+  text-shadow: 0 0 8px rgba(255, 163, 80, 0.85);
+}
+
+@keyframes projectilePulse {
+  0%   { opacity: 0.15; transform: scale(0.85); }
+  40%  { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 0.25; transform: scale(0.95); }
+}
+
+.projectile-trail {
+  display: inline-block;
+  animation: projectilePulse 0.16s ease;
+  font-weight: bold;
+}
+
+.projectile-fire {
+  color: #ff7a54;
+  text-shadow: 0 0 8px rgba(255, 95, 63, 0.75);
+}
+
+.projectile-arcane {
+  color: #59e6e6;
+  text-shadow: 0 0 8px rgba(0, 204, 255, 0.75);
+}
+
+.projectile-frost {
+  color: #a8ceff;
+  text-shadow: 0 0 8px rgba(102, 153, 255, 0.75);
+}
+
+.projectile-physical {
+  color: #ffce73;
+  text-shadow: 0 0 8px rgba(255, 163, 26, 0.7);
+}
+
+.projectile-poison {
+  color: #86db60;
+  text-shadow: 0 0 8px rgba(68, 170, 0, 0.7);
+}
+
+.projectile-ash {
+  color: #ff9d73;
+  text-shadow: 0 0 8px rgba(255, 122, 84, 0.75);
+}
+
+.projectile-stone {
+  color: #d2c7ad;
+  text-shadow: 0 0 8px rgba(176, 162, 133, 0.75);
+}
+
+.projectile-echo {
+  color: #8ec5ff;
+  text-shadow: 0 0 8px rgba(120, 171, 255, 0.75);
+}
+
+.projectile-hunt {
+  color: #b9dd68;
+  text-shadow: 0 0 8px rgba(140, 188, 47, 0.75);
+}
+
+.projectile-hexhand {
+  color: #78e7ff;
+  text-shadow: 0 0 8px rgba(38, 198, 218, 0.75);
+}
+
+.projectile-brawl {
+  color: #ffc47a;
+  text-shadow: 0 0 8px rgba(255, 163, 80, 0.75);
 }
 
 .material-common {

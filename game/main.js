@@ -17,6 +17,10 @@ let loadSlotSelection = 0;
 let deleteConfirmSlot = null;
 let currentSaveSlot = 1;
 let visualFlash = null;
+let projectileTrailVfx = [];
+const MAX_ITEM_UPGRADES = 6;
+const UPGRADE_COST_STEP = 3;
+const BLACKSMITH_BASE_COST = 12;
 let atmosphereBanner = "";
 let atmosphereBannerTimeoutId = null;
 
@@ -26,6 +30,7 @@ let hudDelta = {
   damageEvents: [],    // [{source, amount, turn}]
   displayedAt: null
 };
+let townVisitSoldHistory = []; // newest first, max 10 per town visit
 let codex = { enemies: {}, materials: {}, equipment: {}, lore: [] };
 
 let world = createDefaultWorldState();
@@ -753,7 +758,16 @@ function isRoomCleared() {
   return !entities.some(e => ENEMY_DEFS[e.type]);
 }
 
+function shouldLogAction(message) {
+  let plain = String(message || "").replace(/<[^>]*>/g, "").toLowerCase().trim();
+  if (!plain) return false;
+  if (/regen \+1 hp/.test(plain)) return false;
+  if (/^moved to \(\d+,\d+\)\.?$/.test(plain)) return false;
+  return true;
+}
+
 function logAction(message) {
+  if (!shouldLogAction(message)) return;
   actionLog.unshift(message);
   actionLog = actionLog.slice(0, 5);
 }
@@ -855,6 +869,137 @@ function getNumberKeyIndex(e) {
   return null;
 }
 
+function getBuybackIndexFromKey(e) {
+  let key = e.key.toLowerCase();
+  if (key < "a" || key > "j") return null;
+  return key.charCodeAt(0) - 97;
+}
+
+function recordHealDelta(amount) {
+  hudDelta.lastHeal = { amount, turn };
+}
+
+function recordDamageDelta(source, amount) {
+  hudDelta.damageEvents.push({ source, amount, turn });
+  if (hudDelta.damageEvents.length > 3) hudDelta.damageEvents.shift();
+}
+
+function clearHudDeltaOnStateChange() {
+  hudDelta.lastHeal = null;
+  hudDelta.damageEvents = [];
+  hudDelta.displayedAt = null;
+}
+
+function renderHudDelta() {
+  let parts = [];
+  if (hudDelta.lastHeal && hudDelta.lastHeal.turn === turn) {
+    parts.push('<span class="hud-delta-heal">+' + hudDelta.lastHeal.amount + '</span>');
+  }
+  if (hudDelta.damageEvents.length > 0) {
+    let recent = hudDelta.damageEvents.filter(e => e.turn === turn || e.turn === turn - 1);
+    for (let ev of recent) {
+      parts.push('<span class="hud-delta-damage">-' + ev.amount + '</span>');
+    }
+  }
+  return parts.join(" ");
+}
+
+function cloneForBuyback(item) {
+  return JSON.parse(JSON.stringify(item));
+}
+
+function resetTownVisitBuyback() {
+  townVisitSoldHistory = [];
+}
+
+function pushBuybackEntry(payload, saleValue, source) {
+  townVisitSoldHistory.unshift({
+    payload: cloneForBuyback(payload),
+    saleValue,
+    source,
+    turn,
+    label: payload.name || payload.materialId || "Unknown"
+  });
+  if (townVisitSoldHistory.length > 10) {
+    townVisitSoldHistory.length = 10;
+  }
+}
+
+function restoreBuybackPayload(entry) {
+  let payload = cloneForBuyback(entry.payload);
+  if (isMaterial(payload)) {
+    addMaterialToInventory(normalizeMaterialStack(payload));
+    return;
+  }
+  player.inventory.push(normalizeGearItem(payload));
+}
+
+function attemptBuyback(index) {
+  let entry = townVisitSoldHistory[index];
+  if (!entry) {
+    logAction("No buyback entry at that letter.");
+    return false;
+  }
+  if (player.gold < entry.saleValue) {
+    logAction('Not enough gold to buy back ' + entry.label + '.');
+    return false;
+  }
+  player.gold -= entry.saleValue;
+  restoreBuybackPayload(entry);
+  townVisitSoldHistory.splice(index, 1);
+  logAction('Bought back ' + entry.label + ' for ' + entry.saleValue + 'g.');
+  return true;
+}
+
+function renderBuybackSection() {
+  let text = "\n=== BUYBACK (Town Visit) ===\n";
+  if (!townVisitSoldHistory.length) {
+    text += '<span class="codex-meta">No recently sold entries.</span>\n';
+    text += '<span class="codex-meta">Use A-J to buy back matching entries.</span>\n';
+    return text;
+  }
+
+  townVisitSoldHistory.forEach((entry, i) => {
+    let hotkey = String.fromCharCode(65 + i);
+    let sourceTag = entry.source === "guild" ? "guild" : "merchant";
+    text += hotkey + ': ' + entry.label + ' <span class="codex-meta">(' + sourceTag + ', ' + entry.saleValue + 'g)</span>\n';
+  });
+  text += '<span class="codex-meta">A-J buy back | entries clear on dungeon entry</span>\n';
+  return text;
+}
+
+function renderSectionHeader(title) {
+  return `<span class="codex-section">-- ${title} --</span>`;
+}
+
+function renderScreenInstructions(context) {
+  if (context === "codex") {
+    return '<span class="instruction">[↑↓] navigate | [Tab] switch tab | [K/ESC] exit | [L] log</span>';
+  }
+  if (context === "codex-equipment") {
+    return '<span class="instruction">[↑↓] navigate | [←→] equipment view | [Tab] switch tab | [K/ESC] exit | [L] log</span>';
+  }
+  if (context === "inventory") {
+    return '<span class="instruction">[↑↓] navigate | [Enter] select | [Tab] switch tab | [L] log | [ESC] exit</span>';
+  }
+  if (context === "merchant") {
+    return '<span class="instruction">[number] sell | [A-J] buy back | [ESC] exit</span>';
+  }
+  if (context === "guild") {
+    return '<span class="instruction">[number] sell 1 | [Shift+number] sell stack | [A-J] buy back | [ESC] exit</span>';
+  }
+  if (context === "blacksmith") {
+    return '<span class="instruction">[number] upgrade | [ESC] exit</span>';
+  }
+  if (context === "crafting") {
+    return '<span class="instruction">[number] attempt craft | [ESC] exit</span>';
+  }
+  if (context === "town") {
+    return '<span class="instruction">[1-5] navigate | [C] inventory | [K] codex | [M] menu</span>';
+  }
+  return '<span class="instruction">[ESC] back</span>';
+}
+
 function clampLog(message, maxLen = 54) {
   if (message.length <= maxLen) return message.padEnd(maxLen, " ");
   return message.slice(0, maxLen - 3) + "...";
@@ -913,17 +1058,13 @@ function finishTurn(message, shouldLog = true) {
   turn++;
 
   let finalMessage = message;
-  let regened = false;
   if (turn % 3 === 0 && player.hp < player.maxHp) {
     player.hp += 1;
-    finalMessage += " Regen +1 HP.";
-    regened = true;
+    recordHealDelta(1);
   }
 
   if (shouldLog) {
     logAction(finalMessage);
-  } else if (regened) {
-    logAction("Regen +1 HP.");
   }
 
   runEnemyBehaviorTurn();
@@ -989,13 +1130,140 @@ function triggerFlash(x, y, element) {
   }, 280);
 }
 
-function getAttackElement() {
+function triggerPlayerFlash() {
+  triggerFlash(player.x, player.y, "player-damage");
+}
+
+function pruneProjectileTrailVfx(now = Date.now()) {
+  projectileTrailVfx = projectileTrailVfx.filter(fx => fx.endsAt > now);
+}
+
+function getProjectileTrailPoints(fromX, fromY, toX, toY) {
+  let points = [];
+  let x = fromX;
+  let y = fromY;
+
+  while (x !== toX || y !== toY) {
+    let dx = toX - x;
+    let dy = toY - y;
+    if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) x += dx > 0 ? 1 : -1;
+    else if (dy !== 0) y += dy > 0 ? 1 : -1;
+    points.push({ x, y });
+  }
+
+  return points;
+}
+
+function queueProjectileTrail(fromX, fromY, toX, toY, element) {
+  let points = getProjectileTrailPoints(fromX, fromY, toX, toY);
+  let trailPoints = points.slice(0, -1); // leave impact tile to triggerFlash()
+  if (!trailPoints.length) return;
+
+  let now = Date.now();
+  let stepMs = 40;
+  let lifeMs = 140;
+
+  trailPoints.forEach((pt, index) => {
+    projectileTrailVfx.push({
+      x: pt.x,
+      y: pt.y,
+      element,
+      glyph: "*",
+      startsAt: now + index * stepMs,
+      endsAt: now + index * stepMs + lifeMs
+    });
+  });
+
+  let redrawCount = trailPoints.length + 3;
+  for (let i = 0; i < redrawCount; i++) {
+    setTimeout(() => {
+      if (state !== "DUNGEON") return;
+      pruneProjectileTrailVfx();
+      draw();
+    }, i * stepMs);
+  }
+}
+
+function getActiveProjectileTrailAt(x, y, now = Date.now()) {
+  for (let i = projectileTrailVfx.length - 1; i >= 0; i--) {
+    let fx = projectileTrailVfx[i];
+    if (fx.x !== x || fx.y !== y) continue;
+    if (now < fx.startsAt || now >= fx.endsAt) continue;
+    return fx;
+  }
+  return null;
+}
+
+function getMainHandSuffixElement() {
+  let suffixId = player.equipment.mainHand?.suffixId;
+  if (suffixId === "of_ash") return "ash";
+  if (suffixId === "of_stone") return "stone";
+  if (suffixId === "of_echoes") return "echo";
+  if (suffixId === "of_decay") return "poison";
+  if (suffixId === "of_the_hunt") return "hunt";
+  return null;
+}
+
+function getEmptyHandElement() {
+  if (player.class === "orc") return "brawl";
+  return "hexhand";
+}
+
+function getAttackProfile() {
+  let suffixElement = getMainHandSuffixElement();
+  if (suffixElement) {
+    return {
+      element: suffixElement,
+      dot: player.equipment.mainHand?.suffixId === "of_decay"
+        ? { id: "decay", damagePerTurn: 2, duration: 3 }
+        : null
+    };
+  }
+
   let sub = player.equipment.mainHand?.subType;
-  if (sub === "blade")  return "fire";
-  if (sub === "heavy")  return "physical";
-  if (sub === "arcane") return "arcane";
-  if (sub === "focus")  return "frost";
-  return player.class === "orc" ? "physical" : "arcane";
+  if (sub === "blade") return { element: "fire", dot: null };
+  if (sub === "heavy") return { element: "physical", dot: null };
+  if (sub === "arcane") return { element: "arcane", dot: null };
+  if (sub === "focus") return { element: "frost", dot: null };
+  return { element: getEmptyHandElement(), dot: null };
+}
+
+function getAttackElement() {
+  return getAttackProfile().element;
+}
+
+function applyStatusEffectToEnemy(enemy, effect) {
+  if (!Array.isArray(enemy.statusEffects)) enemy.statusEffects = [];
+  let existing = enemy.statusEffects.find(s => s.id === effect.id);
+  if (existing) {
+    existing.duration = Math.max(existing.duration, effect.duration);
+    existing.damagePerTurn = Math.max(existing.damagePerTurn, effect.damagePerTurn);
+    existing.element = effect.element || existing.element;
+    return false;
+  }
+
+  enemy.statusEffects.push({
+    id: effect.id,
+    duration: effect.duration,
+    damagePerTurn: effect.damagePerTurn,
+    element: effect.element || "poison"
+  });
+  return true;
+}
+
+function tickEnemyStatusEffects(enemy, eDef, events) {
+  if (!Array.isArray(enemy.statusEffects) || enemy.statusEffects.length === 0) return false;
+
+  for (let i = enemy.statusEffects.length - 1; i >= 0; i--) {
+    let effect = enemy.statusEffects[i];
+    enemy.hp -= effect.damagePerTurn;
+    triggerFlash(enemy.x, enemy.y, effect.element || "poison");
+    events.push(`${eDef.name} suffers ${effect.damagePerTurn} ${effect.id} damage.`);
+    effect.duration -= 1;
+    if (effect.duration <= 0) enemy.statusEffects.splice(i, 1);
+  }
+
+  return enemy.hp <= 0;
 }
 
 function getClassResourceType() {
@@ -1088,14 +1356,27 @@ function useWitchHexBolt() {
 
   player.resourceCurrent -= 2;
   let eDef = ENEMY_DEFS[target.type];
-  let damage = Math.max(2, player.atk + 2 + rand(0, 2));
+  let attackProfile = getAttackProfile();
+  let element = attackProfile.element;
+  queueProjectileTrail(player.x, player.y, target.x, target.y, element);
+  let damage = Math.max(2, player.atk + (attackProfile.dot ? 1 : 2) + rand(0, 2));
   target.hp -= damage;
 
   let line = `·→* Hex Bolt hits ${eDef.name} for ${damage}.`;
+  if (attackProfile.dot && target.hp > 0) {
+    let applied = applyStatusEffectToEnemy(target, {
+      id: attackProfile.dot.id,
+      duration: attackProfile.dot.duration,
+      damagePerTurn: attackProfile.dot.damagePerTurn,
+      element
+    });
+    if (applied) line += ` ${eDef.name} is afflicted with ${attackProfile.dot.id}.`;
+    else line += ` ${attackProfile.dot.id} deepens.`;
+  }
   if (target.hp <= 0) {
     line += collectEnemyRewards(target, eDef);
   } else {
-    triggerFlash(target.x, target.y, "arcane");
+    triggerFlash(target.x, target.y, element);
     target.state = "CHASE";
     target.alertTurns = 2;
   }
@@ -1227,20 +1508,32 @@ function tryMoveEnemyToward(enemy, targetX, targetY) {
   return false;
 }
 
+function getEnemyAttackRange(enemy, eDef) {
+  return enemy.range || eDef.behavior?.range || 1;
+}
+
 function resolveEnemyAttack(enemy, eDef, events) {
   if (eDef.behavior?.flees && enemy.hp < enemy.maxHp * 0.5) {
     enemy.state = "RETURN";
     events.push(`${eDef.name} fled wounded.`);
     return false;
   }
+
+  let attackRange = getEnemyAttackRange(enemy, eDef);
+  if (attackRange > 1) {
+    triggerFlash(player.x, player.y, "ash");
+    triggerProjectileTrail(enemy.x, enemy.y, player.x, player.y, "ash");
+  }
+
   if (Math.random() * 100 >= player.dodge) {
     let taken = Math.max(1, enemy.atk - player.def);
     recordDamageDelta(eDef.name, taken);
+    triggerPlayerFlash();
     player.hp -= taken;
-    events.push(`${eDef.name} strikes you for ${taken}.`);
+    events.push(`${eDef.name} ${attackRange > 1 ? "hits" : "strikes"} you for ${taken}.`);
     return player.hp <= 0;
   }
-  events.push(`You dodge ${eDef.name}'s attack.`);
+  events.push(`You dodge ${eDef.name}'s ${attackRange > 1 ? "shot" : "attack"}.`);
   return false;
 }
 
@@ -1273,6 +1566,7 @@ function runEnemyBehaviorTurn() {
   let chaseRange = 2;
   let dropChaseRange = 6;
   let playerDefeated = false;
+  let statusDefeats = [];
 
   for (let enemy of entities) {
     if (playerDefeated) break;
@@ -1285,6 +1579,13 @@ function runEnemyBehaviorTurn() {
       enemy.spawnY = enemy.y;
     }
     if (enemy.alertTurns === undefined) enemy.alertTurns = 0;
+    if (!Array.isArray(enemy.statusEffects)) enemy.statusEffects = [];
+    let attackRange = getEnemyAttackRange(enemy, eDef);
+
+    if (tickEnemyStatusEffects(enemy, eDef, enemyEvents)) {
+      statusDefeats.push({ enemy, eDef });
+      continue;
+    }
 
     let distToPlayer = getDistance(enemy.x, enemy.y, player.x, player.y);
     let previousState = enemy.state;
@@ -1320,7 +1621,7 @@ function runEnemyBehaviorTurn() {
     } else if (enemy.state === "CHASE") {
       if (distToPlayer > dropChaseRange) {
         enemy.state = "RETURN";
-      } else if (distToPlayer === 1) {
+      } else if (distToPlayer <= attackRange) {
         enemy.state = "ATTACK";
         let died = resolveEnemyAttack(enemy, eDef, enemyEvents);
         if (died) {
@@ -1331,7 +1632,7 @@ function runEnemyBehaviorTurn() {
       } else {
         tryMoveEnemyToward(enemy, player.x, player.y);
         let postMoveDist = getDistance(enemy.x, enemy.y, player.x, player.y);
-        if (postMoveDist === 1) {
+        if (postMoveDist <= attackRange) {
           enemy.state = "ATTACK";
           let died = resolveEnemyAttack(enemy, eDef, enemyEvents);
           if (died) {
@@ -1345,7 +1646,7 @@ function runEnemyBehaviorTurn() {
     } else if (enemy.state === "ATTACK") {
       if (distToPlayer > dropChaseRange) {
         enemy.state = "RETURN";
-      } else if (distToPlayer !== 1) {
+      } else if (distToPlayer > attackRange) {
         enemy.state = "CHASE";
       } else {
         let died = resolveEnemyAttack(enemy, eDef, enemyEvents);
@@ -1382,6 +1683,11 @@ function runEnemyBehaviorTurn() {
         stateEventCount++;
       }
     }
+  }
+
+  for (let kill of statusDefeats) {
+    enemyEvents.push(`Rot overtakes ${kill.eDef.name}.`);
+    enemyEvents.push(collectEnemyRewards(kill.enemy, kill.eDef));
   }
 
   for (let evt of enemyEvents) {
@@ -1435,7 +1741,7 @@ const RARITY_RULES = {
   rare: { multiplier: 1.25, prefix: true, suffix: true },
   epic: { multiplier: 1.45, prefix: true, suffix: true },
   legendary: { multiplier: 1.7, prefix: true, suffix: true },
-  unique: { multiplier: 1.0, prefix: false, suffix: false }
+  unique: { multiplier: 1.55, prefix: false, suffix: false }
 };
 
 const UNIQUE_ITEM_TEMPLATES = [
@@ -1940,7 +2246,28 @@ function getGuildDemandBonusPerUnit() {
 
 function getBlacksmithUpgradeCost() {
   let discount = getCraftingTier();
-  return Math.max(6, 10 - discount);
+  return Math.max(8, BLACKSMITH_BASE_COST - discount);
+}
+
+function getCurrentBlacksmithCap() {
+  let tier = getCraftingTier();
+  let cap = 2 + tier * 2;
+  return Math.min(MAX_ITEM_UPGRADES, cap);
+}
+
+function getItemUpgradeCount(item) {
+  return Number.isFinite(item?.upgradeCount) ? item.upgradeCount : 0;
+}
+
+function isItemAtUpgradeCap(item) {
+  return getItemUpgradeCount(item) >= getCurrentBlacksmithCap();
+}
+
+function getItemUpgradeCost(item) {
+  let baseCost = getBlacksmithUpgradeCost();
+  let upgrades = getItemUpgradeCount(item);
+  let multiplier = 1 + upgrades * 0.35;
+  return Math.floor(baseCost * multiplier) + upgrades * UPGRADE_COST_STEP;
 }
 
 function getCraftingFlavorLine() {
@@ -2093,10 +2420,10 @@ const ENEMY_DEFS = {
     biome: "shattered_bastion",
     role: "guardian",
     anomalyTags: [],
-    knownInteractions: "Paired with beetles it creates a hard front. Focus the guard first.",
+    knownInteractions: "Throws barbed javelins before you close in. Break line or rush quickly.",
     colorClass: "enemy-elite",
     hp: 10, atk: 3, def: 3,
-    behavior: {},
+    behavior: { range: 3 },
     lore: [
       { kills: 0,  text: "A hulking warden posted at the threshold of deeper ruins." },
       { kills: 5,  text: "Old armor, strong arms. Not clever, but doesn't need to be." },
@@ -2429,9 +2756,9 @@ function getEnemyCount() {
 
 function spawnEnemy(type, x, y) {
   let def = ENEMY_DEFS[type];
-  let hp = def.hp + (dungeon.floor - 1) * 2;
-  let atk = def.atk + Math.floor(dungeon.floor * 0.65);
-  let defStat = def.def + Math.floor((dungeon.floor - 1) / 3);
+  let hp = def.hp + (dungeon.floor - 1) * 3;
+  let atk = def.atk + Math.floor(dungeon.floor * 0.9);
+  let defStat = def.def + Math.floor((dungeon.floor - 1) / 2);
 
   let elite = dungeon.floor >= 5 && Math.random() < 0.20;
   if (elite) {
@@ -2450,7 +2777,9 @@ function spawnEnemy(type, x, y) {
     maxHp: hp,
     atk,
     def: defStat,
-    elite
+    range: def.behavior?.range || 1,
+    elite,
+    statusEffects: []
   };
   if (def.behavior?.firstStrike) entity.firstHit = true;
   return entity;
@@ -2595,18 +2924,18 @@ function rollBaseRarityByFloor() {
 
 function createUniqueItem() {
   let t = UNIQUE_ITEM_TEMPLATES[rand(0, UNIQUE_ITEM_TEMPLATES.length - 1)];
-  let floorBonus = Math.max(0, Math.floor((dungeon.floor - 5) / 2));
+  let floorBonus = Math.max(0, Math.floor(dungeon.floor / 2));
 
   let baseAtk = 0;
   let baseDef = 0;
   let baseCrit = 0;
   let baseDodge = 0;
 
-  if (["weapon", "wand", "staff", "twoHandWeapon"].includes(t.type)) baseAtk = 4;
-  if (["shield", "armor"].includes(t.type)) baseDef = 4;
+  if (["weapon", "wand", "staff", "twoHandWeapon"].includes(t.type)) baseAtk = 6;
+  if (["shield", "armor"].includes(t.type)) baseDef = 6;
   if (t.type === "accessory") {
-    baseCrit = 3;
-    baseDodge = 3;
+    baseCrit = 4;
+    baseDodge = 4;
   }
 
   return {
@@ -2628,11 +2957,11 @@ function createUniqueItem() {
     isUnique: true,
     codexText: t.codexText || t.specialEffect,
     specialEffect: t.specialEffect,
-    atk: baseAtk + floorBonus + rand(0, 2),
-    def: baseDef + floorBonus + rand(0, 2),
-    hp: 5 + floorBonus * 2 + rand(0, 3),
-    crit: baseCrit + rand(0, 4),
-    dodge: baseDodge + rand(0, 4)
+    atk: baseAtk + floorBonus * 2 + rand(1, 3),
+    def: baseDef + floorBonus * 2 + rand(1, 3),
+    hp: 8 + floorBonus * 3 + rand(1, 4),
+    crit: baseCrit + floorBonus + rand(0, 4),
+    dodge: baseDodge + floorBonus + rand(0, 4)
   };
 }
 
@@ -2991,6 +3320,7 @@ function loadGame(slotIndex = 1) {
   }
 
   currentSaveSlot = slotIndex;
+  resetTownVisitBuyback();
   return true;
 }
 
@@ -3036,6 +3366,7 @@ function startGame() {
   };
 
   turn = 0;
+  resetTownVisitBuyback();
   actionLog = ["A new journey begins.", `This journey is bound to slot ${currentSaveSlot}.`];
 
   if (player.class === "witch") {
@@ -3057,6 +3388,7 @@ function startGame() {
 // ===== MAP =====
 function generateRoom() {
   entities = [];
+  resetTownVisitBuyback();
   syncBiomeProgressByDepth();
 
   // Phase 4 layout: connected chambers keep navigation legible while making
@@ -3222,24 +3554,39 @@ Kill what you find. Loot what you can. Come back alive.</span>
 
   if (state === "TOWN") {
     let biome = getActiveBiomeDef();
-    gameEl.innerHTML = `
-[TOWN]
+    let townText = `<span class="codex-title">[TOWN]</span>
 
-1. Enter Dungeon
-2. ${getMerchantMenuLabel()}
-3. Blacksmith
-4. ${getGuildMenuLabel()}
-5. Class Crafting
-C. Inventory
-K. Codex
-M. Main Menu
-
-Gold: ${player.gold}
-HP: ${player.hp}
-Town Tier: ${world.town.rebuildTier}  [${world.town.districtState}]
-Active Biome Track: ${biome.name}
-${getTownStatusNote()}
 `;
+    townText += `1. Enter Dungeon
+`;
+    townText += `2. ${getMerchantMenuLabel()}
+`;
+    townText += `3. Blacksmith
+`;
+    townText += `4. ${getGuildMenuLabel()}
+`;
+    townText += `5. Class Crafting
+`;
+    townText += `C. Inventory
+`;
+    townText += `K. Codex
+`;
+    townText += `M. Main Menu
+`;
+    townText += `
+${renderSectionHeader("Status")}
+`;
+    townText += `<span class="system">Gold: ${player.gold}  HP: ${player.hp}</span>
+`;
+    townText += `<span class="system">Town Tier: ${world.town.rebuildTier}  [${world.town.districtState}]</span>
+`;
+    townText += `<span class="system">Active Biome: ${biome.name}</span>
+`;
+    townText += `${getTownStatusNote()}
+`;
+    townText += `
+${renderScreenInstructions("town")}`;
+    gameEl.innerHTML = townText;
   if (atmosphereBanner) {
     gameEl.innerHTML += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
   }
@@ -3249,7 +3596,8 @@ ${getTownStatusNote()}
   }
 
   if (state === "MERCHANT") {
-    let text = `[${getMerchantMenuLabel().toUpperCase()}]\nSell items:\n`;
+    let text = `<span class="codex-title">[${getMerchantMenuLabel().toUpperCase()}]</span>\n`;
+    text += `${renderSectionHeader("Sell Items")}\n`;
     text += `<span class="codex-note">${getMerchantFlavorLine()}</span>\n\n`;
     player.inventory.forEach((item, i) => {
       if (isMaterial(item)) return;
@@ -3258,7 +3606,8 @@ ${getTownStatusNote()}
       let effectLine = renderSpecialEffectLine(item);
       if (effectLine) text += `${effectLine}\n`;
     });
-    text += "\nESC to exit";
+    text += renderBuybackSection();
+    text += `\n${renderScreenInstructions("merchant")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3271,8 +3620,9 @@ ${getTownStatusNote()}
     let selected = items[codexSelection] || null;
 
     let text = `<span class="codex-title">${getCodexHeaderTitle()}</span>\n`;
-    text += `${renderCodexTabBar()}\n\n`;
-    text += `<span class="codex-section">-- ${codexTab} --</span>\n`;
+    text += `${renderCodexTabBar()}\n`;
+    text += `<span class="dialogue">${getClassFlavorHint()}</span>\n\n`;
+    text += `${renderSectionHeader(codexTab)}\n`;
     if (codexTab === "EQUIPMENT") {
       text += `${renderCodexEquipmentBar()}\n`;
     }
@@ -3285,11 +3635,11 @@ ${getTownStatusNote()}
       });
     }
 
-    text += '\n<span class="codex-section">-- Detail --</span>\n';
+    text += `\n${renderSectionHeader("Detail")}\n`;
     text += `${renderCodexDetail(selected, codexTab)}\n`;
     text += codexTab === "EQUIPMENT"
-      ? '\n<span class="codex-meta">[↑↓] navigate | [←→] equipment view | [Tab] switch tab | [K/ESC] exit | [L] log</span>'
-      : '\n<span class="codex-meta">[↑↓] navigate | [Tab] switch tab | [K/ESC] exit | [L] log</span>';
+      ? `\n${renderScreenInstructions("codex-equipment")}`
+      : `\n${renderScreenInstructions("codex")}`;
     if (atmosphereBanner) {
       text += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
     }
@@ -3300,7 +3650,8 @@ ${getTownStatusNote()}
   }
 
   if (state === "GUILD") {
-    let text = `[${getGuildMenuLabel().toUpperCase()}]\nSell monster materials:\n`;
+    let text = `<span class="codex-title">[${getGuildMenuLabel().toUpperCase()}]</span>\n`;
+    text += `${renderSectionHeader("Sell Materials")}\n`;
     text += `<span class="codex-note">${getGuildFlavorLine()}</span>\n\n`;
     let guildBonus = getGuildDemandBonusPerUnit();
     text += `<span class="codex-meta">craft demand bonus: +${guildBonus}g per unit</span>\n\n`;
@@ -3317,7 +3668,8 @@ ${getTownStatusNote()}
     } else {
       text += `\n<span class=\"codex-meta\">${getGuildVoiceLine("menu")}</span>\n`;
     }
-    text += "\n[number] sell 1 | Shift+[number] sell stack\nESC to exit";
+    text += renderBuybackSection();
+    text += `\n${renderScreenInstructions("guild")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3326,7 +3678,8 @@ ${getTownStatusNote()}
 
   if (state === "BLACKSMITH") {
     let upgradeCost = getBlacksmithUpgradeCost();
-    let text = `[BLACKSMITH]\nUpgrade gear (cost ${upgradeCost}):\n`;
+    let text = `<span class="codex-title">[BLACKSMITH]</span>\n`;
+    text += `${renderSectionHeader("Upgrade Gear")} <span class="codex-meta">(cost ${upgradeCost}g)</span>\n`;
     text += `<span class="codex-note">${getBlacksmithFlavorLine()}</span>\n\n`;
     text += `<span class="codex-meta">craft network discount: ${10 - upgradeCost}g</span>\n\n`;
     Object.entries(player.equipment).forEach(([slot, item], i) => {
@@ -3337,7 +3690,7 @@ ${getTownStatusNote()}
         if (effectLine) text += `${effectLine}\n`;
       }
     });
-    text += "\nESC to exit";
+    text += `\n${renderScreenInstructions("blacksmith")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3346,7 +3699,8 @@ ${getTownStatusNote()}
 
   if (state === "CRAFTING") {
     let recipes = getCraftingRecipesForClass();
-    let text = "[CLASS CRAFTING]\n";
+    let text = `<span class="codex-title">[CLASS CRAFTING]</span>\n`;
+    text += `${renderSectionHeader("Recipes")}\n`;
     text += `<span class="codex-note">${getCraftingFlavorLine()}</span>\n\n`;
     text += `<span class="codex-meta">attempts:${world.crafting.attempts} successes:${world.crafting.successes} failures:${world.crafting.failures}</span>\n\n`;
 
@@ -3363,7 +3717,7 @@ ${getTownStatusNote()}
       });
     }
 
-    text += "\n[number] attempt craft\nESC to exit";
+    text += `\n${renderScreenInstructions("crafting")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3372,8 +3726,11 @@ ${getTownStatusNote()}
 
   if (state === "INVENTORY") {
     let text = "<span class=\"codex-title\">[INVENTORY]</span>\n";
-    text += `<span class="codex-meta">[Tab] ${inventoryTab === "GEAR" ? "► GEAR" : "GEAR"} | ${inventoryTab === "MATERIALS" ? "► MATERIALS" : "MATERIALS"}</span>\n\n`;
-    
+    text += `<span class="dialogue">Pack check before descent.</span>\n`;
+    text += `${renderSectionHeader("Tabs")}\n`;
+    text += `<span class="system">[Tab] ${inventoryTab === "GEAR" ? "► GEAR" : "GEAR"} | ${inventoryTab === "MATERIALS" ? "► MATERIALS" : "MATERIALS"}</span>\n\n`;
+    text += `${renderSectionHeader(inventoryTab === "GEAR" ? "Gear List" : "Material List")}\n`;
+
     let filteredItems = [];
     player.inventory.forEach((item, originalIndex) => {
       if (inventoryTab === "GEAR" && !isMaterial(item)) {
@@ -3384,7 +3741,7 @@ ${getTownStatusNote()}
     });
 
     if (filteredItems.length === 0) {
-      text += "<span class=\"codex-meta\">Empty</span>\n";
+      text += "<span class=\"lore\">No entries in this tab yet.</span>\n";
     } else {
       filteredItems.forEach(({ item, originalIndex }, displayIndex) => {
         let marker = displayIndex === inventorySelection ? "→ " : "  ";
@@ -3402,7 +3759,7 @@ ${getTownStatusNote()}
       });
     }
 
-    text += "\n<span class=\"codex-meta\">[↑↓] navigate | [Enter] select | [Tab] switch tab | [L] log | [ESC] exit</span>";
+    text += `\n${renderScreenInstructions("inventory")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3411,12 +3768,18 @@ ${getTownStatusNote()}
 
   // ===== DUNGEON =====
   let output = "";
+  pruneProjectileTrailVfx();
+  let now = Date.now();
 
   for (let y = 0; y < HEIGHT; y++) {
     for (let x = 0; x < WIDTH; x++) {
 
       if (player.x === x && player.y === y) {
-        output += '<span class="tile-player">@</span>';
+        let playerClass = "tile-player";
+        if (visualFlash && visualFlash.x === x && visualFlash.y === y) {
+          playerClass += ` tile-hit-${visualFlash.element}`;
+        }
+        output += `<span class="${playerClass}">@</span>`;
         continue;
       }
 
@@ -3445,8 +3808,14 @@ ${getTownStatusNote()}
       }
 
       if (!drawn) {
-        if (map[y][x] === ">") output += '<span class="tile-exit">&gt;</span>';
-        else output += renderMapTileSymbol(map[y][x]);
+        let trailFx = getActiveProjectileTrailAt(x, y, now);
+        if (trailFx) {
+          output += `<span class="projectile-trail projectile-${trailFx.element}">${trailFx.glyph}</span>`;
+        } else if (map[y][x] === ">") {
+          output += '<span class="tile-exit">&gt;</span>';
+        } else {
+          output += renderMapTileSymbol(map[y][x]);
+        }
       }
     }
     output += "\n";
@@ -3577,6 +3946,7 @@ function equipItem(index, shouldLog = true) {
     if (shouldLog) logAction("Ring must be equipped in a ring slot.");
     return null;
   }
+
 
   let action = "";
 
@@ -3805,6 +4175,13 @@ document.addEventListener("keydown", (e) => {
   }
 
   let keyIndex = getNumberKeyIndex(e);
+  let buybackIndex = getBuybackIndexFromKey(e);
+
+  if ((state === "MERCHANT" || state === "GUILD") && buybackIndex !== null) {
+    attemptBuyback(buybackIndex);
+    draw();
+    return;
+  }
 
   // ===== MERCHANT =====
   if (state === "MERCHANT" && keyIndex !== null) {
@@ -3828,6 +4205,7 @@ document.addEventListener("keydown", (e) => {
       unique: 120
     }[item.rarity] || 5;
 
+    pushBuybackEntry(item, value, "merchant");
     player.gold += value;
     player.inventory.splice(i, 1);
     logAction(`Sold ${item.name} for ${value}g.`);
@@ -3853,10 +4231,17 @@ document.addEventListener("keydown", (e) => {
     if (e.shiftKey) {
       let stackTotal = unitValue * item.quantity;
       let stackCount = item.quantity;
+      pushBuybackEntry(item, stackTotal, "guild");
       player.gold += stackTotal;
       player.inventory.splice(i, 1);
       logAction(`Sold ${item.name} x${stackCount} for ${stackTotal}g.`);
     } else {
+      let soldUnit = {
+        ...item,
+        quantity: 1,
+        totalValue: item.value
+      };
+      pushBuybackEntry(soldUnit, unitValue, "guild");
       player.gold += unitValue;
       item.quantity -= 1;
       item.totalValue -= item.value;
@@ -3879,11 +4264,14 @@ document.addEventListener("keydown", (e) => {
     let keys = Object.keys(player.equipment);
     let slot = keys[keyIndex];
     let item = player.equipment[slot];
-    let upgradeCost = getBlacksmithUpgradeCost();
+    let upgradeCost = item ? getItemUpgradeCost(item) : getBlacksmithUpgradeCost();
 
-    if (item && player.gold >= upgradeCost) {
+    if (item && isItemAtUpgradeCap(item)) {
+      logAction(`${item.name} has reached the blacksmith cap.`);
+    } else if (item && player.gold >= upgradeCost) {
       item.atk += 1;
       item.def += 1;
+      item.upgradeCount = getItemUpgradeCount(item) + 1;
       player.gold -= upgradeCost;
       calculateStats();
       logAction(`Upgraded ${slot} (+1 ATK / +1 DEF) for ${upgradeCost}g.`);
@@ -4098,8 +4486,9 @@ document.addEventListener("keydown", (e) => {
         if (e.firstHit) {
           e.firstHit = false;
           if (Math.random() * 100 >= player.dodge) {
-    recordDamageDelta(eDef.name, firstDmg);
             let firstDmg = Math.max(1, e.atk * 2 - player.def);
+            recordDamageDelta(eDef.name, firstDmg);
+            triggerPlayerFlash();
             player.hp -= firstDmg;
             result += `${eDef.name} ambushes you for ${firstDmg}! `;
           } else {
