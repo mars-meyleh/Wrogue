@@ -771,6 +771,33 @@ suite("Buyback Ledger", () => {
   });
 });
 
+// ── Narrative Intro ───────────────────────────────────────────────────────────
+suite("Narrative Intro", () => {
+  test("introLetterRead defaults to false in new world state", () => {
+    const w = createDefaultWorldState();
+    assertEqual(w.narrative.introLetterRead, false);
+  });
+
+  test("normalizeWorldState fills introLetterRead from defaults when missing", () => {
+    const partial = { narrative: { seenFamilies: [], seenMaterialTiers: [], lastWelcomedTier: 0 } };
+    const normalized = normalizeWorldState(partial);
+    assertEqual(normalized.narrative.introLetterRead, false);
+  });
+
+  test("normalizeWorldState preserves introLetterRead: true from saved data", () => {
+    const saved = { narrative: { seenFamilies: [], seenMaterialTiers: [], lastWelcomedTier: 0, introLetterRead: true } };
+    const normalized = normalizeWorldState(saved);
+    assertEqual(normalized.narrative.introLetterRead, true);
+  });
+
+  test("startGame resets introLetterRead to false", () => {
+    world.narrative.introLetterRead = true;
+    player.class = "witch";
+    startGame();
+    assertEqual(world.narrative.introLetterRead, false);
+  });
+});
+
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderResults() {
   let total = 0, passed = 0;

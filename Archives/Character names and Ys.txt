@@ -1,0 +1,108 @@
+Character names and Ys
+
+Not every character needs a surname. Giving one to everyone can dilute impact and make the world feel artificially formal. Use them with intent.
+
+Guideline:
+
+Full names (with surnames): officials, nobles, guild leaders, people tied to institutions or legacy
+Single names or titles: common folk, survivors, people defined by trade or tragedy
+Nicknames: characters shaped by the dungeon or local reputation
+
+In Ashroot’s case, surnames can signal structure returning to chaos. The more the town stabilizes, the more full identities emerge.
+
+Refined Cast with Surnames (Selective Use)
+Bartholomeo Varsgo
+
+(Keep as already defined)
+The surname reinforces his connection to the Guild and the capital—he represents order, paperwork, and authority trying to root itself in ruin.
+
+Demeter (no surname… yet)
+
+Working Title: “Demeter Ashhand” (nickname, not official)
+
+Concept:
+Demeter doesn’t use his family name anymore. Not because he forgot it—but because it hurts to carry it.
+
+Backstory Addition:
+His family name was once respected among craftsmen, but after the Ashroot incident, it became associated with failure and loss. He refuses to revive it until the forge truly lives again.
+
+Narrative Use:
+Later in the game, the player can help him reclaim it:
+
+Unlocks his real surname (your choice later)
+Marks a major emotional and town progression milestone
+Malaphus Grell
+
+Role: Merchant / Future Guild Founder
+
+Surname Feel: Practical, trade-oriented, slightly foreign
+
+Backstory:
+“Grell” is a known name among caravan networks. Malaphus comes from a long line of traders who value profit over politics. He distanced himself from his family to prove he could build something on his own terms.
+
+Character Angle:
+
+Uses his surname when it benefits business
+Drops it when he wants to appear neutral or humble
+Bartholomeo’s Superior (Optional Expansion)
+
+Krongar Thuld
+(If you want to deepen him later)
+
+A hardened Guild veteran. His surname carries weight among high-ranking adventurers.
+
+The Orc (Blacksmith Alternative or Companion)
+
+If this is a separate character from Demeter:
+
+Name: Ghorak Ironmaw
+
+Backstory:
+Part of a wandering orc clan that valued craftsmanship over war. His surname comes from a ritual—biting molten iron to prove endurance.
+
+Role:
+
+Brings raw, brutal forging methods
+Clashes with Demeter’s more refined style
+Bartholomeo’s Clerk (Optional Minor Character)
+
+Name: Elira Voss
+
+Role: Assistant / Record Keeper
+
+Backstory:
+Transferred against her will. Keeps perfect records but quietly documents things the Guild shouldn’t ignore. Could later expose truths about Ashroot.
+
+Religious Figure (if Paladin builds Church)
+
+Name: Sister Caelwyn Mireth
+
+Backstory:
+Believes Ashroot is not just cursed—but judged. Her surname ties her to an old religious order that has seen similar “fallen cities.”
+
+Hunter / Cook
+
+Name: Toren Feld
+
+Backstory:
+A former ranger who abandoned noble service after witnessing the kingdom ignore frontier settlements like Ashroot. His surname ties him to land and survival.
+
+Design Philosophy Going Forward
+
+Think of surnames as signals of power, origin, or transformation:
+
+Given at birth: Nobility, guild families, legacy roles
+Earned: Titles like “Ironmaw,” “Ashhand,” etc.
+Recovered: Lost identities reclaimed through story progression
+Strong Narrative Mechanic (Highly Recommended)
+
+Tie surnames to progression systems:
+
+Early game: people are just names or roles
+Mid game: surnames appear as trust builds
+Late game: titles evolve based on player choices
+
+Example:
+
+Demeter → Demeter Ashhand → Demeter [True Surname]
+Player gains title tied to Ashroot (not just a name)

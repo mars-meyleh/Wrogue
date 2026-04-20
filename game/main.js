@@ -213,7 +213,8 @@ function createDefaultWorldState() {
     narrative: {
       seenFamilies: [],
       seenMaterialTiers: [],
-      lastWelcomedTier: 0
+      lastWelcomedTier: 0,
+      introLetterRead: false
     },
     crafting: {
       attempts: 0,
@@ -3512,15 +3513,24 @@ function draw() {
   if (state === "LORE_INTRO") {
     gameEl.innerHTML =
 `<span class="codex-title">[FIRST ARRIVAL]</span>
+<span class="codex-meta">A letter, worn at the edges.</span>
 
-<span class="codex-note">The town of Ashroot sits at the edge of a collapsed world.
-Below its cobblestones, something old stirs — a layered ruin
-the locals call the Wrogue. No map goes down that far.</span>
+<span class="codex-note">"Fellow adventurer — Ashroot requires your attention.
+The dungeon beneath it has grown beyond manageable.
+Bartholomeo Varsgo will serve as local Guild Master.
+He is young, but capable. Support him where you can.
 
-<span class="codex-note">You arrived with a cracked weapon and a guild contract.
-Kill what you find. Loot what you can. Come back alive.</span>
+Enclosed: your payment from the last contract.
+Your next obligation: descend, and report conditions
+back to the King's Council. They will want to know
+what is down there.
 
-<span class="codex-meta">The guild pays well for proof of work.</span>
+— Krongar Thuld, Guild Master"</span>
+
+<span class="codex-note">The town that greets you is barely that.
+Collapsed homes, cold hearths, ash on every wind.
+Below the cobblestones, something old stirs.
+The locals call it the Wrogue.</span>
 
 <span class="codex-section">        [ Press any key to enter Ashroot ]</span>`;
     uiEl.innerHTML = `<span class="codex-meta">A new journey begins.</span>`;
@@ -4123,6 +4133,7 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (state === "LORE_INTRO") {
+    world.narrative.introLetterRead = true;
     state = "TOWN";
     draw();
     return;

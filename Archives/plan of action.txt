@@ -1,0 +1,12 @@
+plan of action
+
+- for the milestones, craft in a way that it feels like the player actually did something actively for the town to upgrade, a quest, a donation, a conversation with the npcs.
+
+- for the Log coments from the NPCs
+
+- IMPORTANT: make the ui/ux feels more intuitive, distinct areas, what is title, what is lore text, what is npc dialogue, what is ur inventory and what you sold and if you can buy it back.
+- think about the color palette for it generally and then change it accordingly through class-bound-theme.
+
+- refactor/rework the inventory to not be just an array, maybe split it into gear and inventory array temporarily
+
+- talk about the -% in dodge atributes
