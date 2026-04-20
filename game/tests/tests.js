@@ -798,6 +798,119 @@ suite("Narrative Intro", () => {
   });
 });
 
+// ── Town Progression ──────────────────────────────────────────────────────────
+suite("Town Progression", () => {
+  function resetWorld() {
+    world = createDefaultWorldState();
+  }
+
+  test("refreshTownProgression sets tier 0 with no milestones", () => {
+    resetWorld();
+    refreshTownProgression();
+    assertEqual(world.town.rebuildTier, 0);
+    assertEqual(world.town.districtState, "ruined");
+  });
+
+  test("refreshTownProgression sets tier 1 on first_warden_felled", () => {
+    resetWorld();
+    world.milestones.completed = ["first_warden_felled"];
+    refreshTownProgression();
+    assertEqual(world.town.rebuildTier, 1);
+    assertEqual(world.town.districtState, "repairing");
+  });
+
+  test("refreshTownProgression sets tier 2 on deep_paths_opened", () => {
+    resetWorld();
+    world.milestones.completed = ["first_warden_felled", "deep_paths_opened"];
+    refreshTownProgression();
+    assertEqual(world.town.rebuildTier, 2);
+    assertEqual(world.town.districtState, "restored");
+  });
+
+  test("refreshTownProgression sets tier 3 on guild_attention_earned", () => {
+    resetWorld();
+    world.milestones.completed = ["first_warden_felled", "deep_paths_opened", "guild_attention_earned"];
+    refreshTownProgression();
+    assertEqual(world.town.rebuildTier, 3);
+    assertEqual(world.town.districtState, "thriving");
+  });
+
+  test("completeWorldMilestone is idempotent", () => {
+    resetWorld();
+    const r1 = completeWorldMilestone("first_warden_felled", null);
+    const r2 = completeWorldMilestone("first_warden_felled", null);
+    assertEqual(r1, true);
+    assertEqual(r2, false);
+    assertEqual(world.milestones.completed.length, 1);
+  });
+
+  test("maybeLogScoutReport does not log when floor is 1", () => {
+    dungeon.floor = 1;
+    const before = actionLog.length;
+    maybeLogScoutReport();
+    assertEqual(actionLog.length, before);
+  });
+
+  test("maybeLogScoutReport logs when floor is greater than 1", () => {
+    dungeon.floor = 3;
+    const before = actionLog.length;
+    maybeLogScoutReport();
+    assert(actionLog.length > before, "should have logged a scout note");
+    assert(actionLog[actionLog.length - 1].includes("Scout note"), "log should contain scout note");
+  });
+});
+
+// ── NPC Relations ─────────────────────────────────────────────────────────────
+suite("NPC Relations", () => {
+  function resetWorld() {
+    world = createDefaultWorldState();
+  }
+
+  test("npcRelations defaults to 0 for all NPCs", () => {
+    resetWorld();
+    assertEqual(world.npcRelations.merchant, 0);
+    assertEqual(world.npcRelations.blacksmith, 0);
+    assertEqual(world.npcRelations.guild, 0);
+  });
+
+  test("getNpcRelationLabel returns stranger at 0", () => {
+    resetWorld();
+    assertEqual(getNpcRelationLabel("merchant"), "stranger");
+  });
+
+  test("getNpcRelationLabel returns acquaintance at 1", () => {
+    resetWorld();
+    world.npcRelations.merchant = 1;
+    assertEqual(getNpcRelationLabel("merchant"), "acquaintance");
+  });
+
+  test("getNpcRelationLabel returns acquaintance at 2", () => {
+    resetWorld();
+    world.npcRelations.merchant = 2;
+    assertEqual(getNpcRelationLabel("merchant"), "acquaintance");
+  });
+
+  test("getNpcRelationLabel returns known at 3", () => {
+    resetWorld();
+    world.npcRelations.guild = 3;
+    assertEqual(getNpcRelationLabel("guild"), "known");
+  });
+
+  test("getNpcRelationLabel returns trusted at 6", () => {
+    resetWorld();
+    world.npcRelations.blacksmith = 6;
+    assertEqual(getNpcRelationLabel("blacksmith"), "trusted");
+  });
+
+  test("normalizeWorldState preserves npcRelations values", () => {
+    const saved = { npcRelations: { merchant: 4, blacksmith: 7, guild: 2 } };
+    const normalized = normalizeWorldState(saved);
+    assertEqual(normalized.npcRelations.merchant, 4);
+    assertEqual(normalized.npcRelations.blacksmith, 7);
+    assertEqual(normalized.npcRelations.guild, 2);
+  });
+});
+
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderResults() {
   let total = 0, passed = 0;

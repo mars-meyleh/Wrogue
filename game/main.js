@@ -342,10 +342,10 @@ function recordDeepestFloor() {
   world.biomeProgress.deepestFloorByBiome[biomeId] = Math.max(current, dungeon.floor);
 
   if (dungeon.floor >= 4) {
-    completeWorldMilestone("deep_paths_opened", "Ashroot stirs as the deeper paths begin to yield.");
+    completeWorldMilestone("deep_paths_opened", "The deeper paths are accessible. Krongar will want a full account for the Council.");
   }
   if (dungeon.floor >= 7) {
-    completeWorldMilestone("guild_attention_earned", "Word spreads beyond Ashroot. The guild begins preparing outside requests.");
+    completeWorldMilestone("guild_attention_earned", "Word reaches beyond Ashroot. The guild is watching — and so is the Council.");
   }
 }
 
@@ -364,6 +364,14 @@ function getMerchantMenuLabel() {
 
 function getGuildMenuLabel() {
   return world.town.contractBoardUnlocked ? "Guild Board" : "Guild";
+}
+
+function getNpcRelationLabel(npc) {
+  let count = world.npcRelations[npc] || 0;
+  if (count === 0) return "stranger";
+  if (count <= 2) return "acquaintance";
+  if (count <= 5) return "known";
+  return "trusted";
 }
 
 const BIOME_DEFS = {
@@ -600,7 +608,7 @@ function applyBiomeTiles() {
 }
 
 function getTownStatusNote() {
-  if (world.town.districtState === "ruined") return "Collapsed homes lean over the square, but the lanterns still hold.";
+  if (world.town.districtState === "ruined") return "The devastation is worse than Krongar's letter described. The lanterns barely hold.";
   if (world.town.districtState === "repairing") return "Fresh timber and stitched canvas mark the first signs of return.";
   if (world.town.districtState === "restored") return "Trade stalls and watchfires make Ashroot look lived in again.";
   return "Caravans, contracts, and rumor now gather where only ash once settled.";
@@ -637,14 +645,15 @@ function maybeLogTownTierWelcome() {
   if (tier <= (world.narrative.lastWelcomedTier || 0)) return;
 
   if (tier === 1) {
-    logAction(`Merchant: '${getMerchantVoiceLine("tier_1")}'`);
-    logAction("Blacksmith: 'First scaffolds are up. Steel sounds better in a living town.'");
+    logAction(`Malaphus: '${getMerchantVoiceLine("tier_1")}'`);
+    logAction("Demeter: 'First scaffolds are up. Steel sounds better in a living town.'");
   } else if (tier === 2) {
-    logAction(`Merchant: '${getMerchantVoiceLine("tier_2")}'`);
-    logAction(`Guild Keeper: '${getGuildVoiceLine("tier_2")}'`);
+    logAction(`Malaphus: '${getMerchantVoiceLine("tier_2")}'`);
+    logAction(`Bartholomeo: '${getGuildVoiceLine("tier_2")}'`);
   } else if (tier >= 3) {
-    logAction(`Guild Keeper: '${getGuildVoiceLine("tier_3")}'`);
-    logAction(`Merchant: '${getMerchantVoiceLine("tier_3")}'`);
+    logAction(`Bartholomeo: '${getGuildVoiceLine("tier_3")}'`);
+    logAction(`Malaphus: '${getMerchantVoiceLine("tier_3")}'`);
+    logAction("Krongar's ledger has been updated. The Council is aware of Ashroot.");
   }
 
   world.narrative.lastWelcomedTier = tier;
@@ -1309,7 +1318,7 @@ function collectEnemyRewards(enemy, eDef) {
 
   if (codex.enemies[enemy.type]) codex.enemies[enemy.type].kills++;
   if (enemy.type === "stone_beetle" || enemy.type === "dungeon_guard") {
-    completeWorldMilestone("first_warden_felled", "Ashroot hears of a warden's fall. Work crews dare to rebuild by lanternlight.");
+    completeWorldMilestone("first_warden_felled", "A warden falls in the deep. Krongar will want to hear of this — work crews dare the rubble again.");
   }
 
   let lootLine = ` ✸ ${eDef.name} defeated.`;
@@ -3326,6 +3335,12 @@ function loadGame(slotIndex = 1) {
 }
 
 // ===== WORLD FLOW =====
+function maybeLogScoutReport() {
+  if (dungeon.floor <= 1) return;
+  let biomeName = getActiveBiomeDef().name;
+  logAction(`Scout note: floor ${dungeon.floor}, ${biomeName}. Report queued for Krongar.`);
+}
+
 function enterTown(message = "Returned to town.") {
   state = "TOWN";
   clearHudDeltaOnStateChange();
@@ -3334,6 +3349,7 @@ function enterTown(message = "Returned to town.") {
   player.resourceCurrent = player.resourceMax;
   logAction(message);
   logAction("You rest under Ashroot's lanterns and recover your strength.");
+  maybeLogScoutReport();
   maybeLogTownTierWelcome();
   setAtmosphereBanner("town");
   saveGame(currentSaveSlot);
@@ -3607,6 +3623,7 @@ ${renderScreenInstructions("town")}`;
 
   if (state === "MERCHANT") {
     let text = `<span class="codex-title">[${getMerchantMenuLabel().toUpperCase()}]</span>\n`;
+    text += `<span class="codex-meta">Malaphus Grell · ${getNpcRelationLabel("merchant")}</span>\n`;
     text += `${renderSectionHeader("Sell Items")}\n`;
     text += `<span class="codex-note">${getMerchantFlavorLine()}</span>\n\n`;
     player.inventory.forEach((item, i) => {
@@ -3661,6 +3678,7 @@ ${renderScreenInstructions("town")}`;
 
   if (state === "GUILD") {
     let text = `<span class="codex-title">[${getGuildMenuLabel().toUpperCase()}]</span>\n`;
+    text += `<span class="codex-meta">Bartholomeo Varsgo · ${getNpcRelationLabel("guild")}</span>\n`;
     text += `${renderSectionHeader("Sell Materials")}\n`;
     text += `<span class="codex-note">${getGuildFlavorLine()}</span>\n\n`;
     let guildBonus = getGuildDemandBonusPerUnit();
@@ -3689,6 +3707,7 @@ ${renderScreenInstructions("town")}`;
   if (state === "BLACKSMITH") {
     let upgradeCost = getBlacksmithUpgradeCost();
     let text = `<span class="codex-title">[BLACKSMITH]</span>\n`;
+    text += `<span class="codex-meta">Demeter · ${getNpcRelationLabel("blacksmith")}</span>\n`;
     text += `${renderSectionHeader("Upgrade Gear")} <span class="codex-meta">(cost ${upgradeCost}g)</span>\n`;
     text += `<span class="codex-note">${getBlacksmithFlavorLine()}</span>\n\n`;
     text += `<span class="codex-meta">craft network discount: ${10 - upgradeCost}g</span>\n\n`;
@@ -4219,6 +4238,7 @@ document.addEventListener("keydown", (e) => {
     pushBuybackEntry(item, value, "merchant");
     player.gold += value;
     player.inventory.splice(i, 1);
+    world.npcRelations.merchant += 1;
     logAction(`Sold ${item.name} for ${value}g.`);
     draw();
     return;
@@ -4245,6 +4265,7 @@ document.addEventListener("keydown", (e) => {
       pushBuybackEntry(item, stackTotal, "guild");
       player.gold += stackTotal;
       player.inventory.splice(i, 1);
+      world.npcRelations.guild += 1;
       logAction(`Sold ${item.name} x${stackCount} for ${stackTotal}g.`);
     } else {
       let soldUnit = {
@@ -4263,6 +4284,7 @@ document.addEventListener("keydown", (e) => {
         item.value = Math.max(1, Math.round(item.totalValue / item.quantity));
       }
 
+      world.npcRelations.guild += 1;
       logAction(`Sold 1 ${item.name} for ${unitValue}g.`);
     }
 
@@ -4284,6 +4306,7 @@ document.addEventListener("keydown", (e) => {
       item.def += 1;
       item.upgradeCount = getItemUpgradeCount(item) + 1;
       player.gold -= upgradeCost;
+      world.npcRelations.blacksmith += 1;
       calculateStats();
       logAction(`Upgraded ${slot} (+1 ATK / +1 DEF) for ${upgradeCost}g.`);
     } else if (item && player.gold < upgradeCost) {
