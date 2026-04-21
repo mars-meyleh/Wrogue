@@ -17,6 +17,8 @@ let loadSlotSelection = 0;
 let deleteConfirmSlot = null;
 let currentSaveSlot = 1;
 let glyphMode = localStorage.getItem("wrogue_glyph_mode") || "ascii";
+let glyphGridPolicy = localStorage.getItem("wrogue_glyph_grid_policy") || "safe";
+let showSettingsSymbolLegend = false;
 let visualFlash = null;
 let projectileTrailVfx = [];
 const MAX_ITEM_UPGRADES = 6;
@@ -86,7 +88,15 @@ const THEME_NEUTRAL_STATES = [
   "LORE_INTRO",
   "SETTINGS"
 ];
-const GLYPH_GRID_SAFE_FALLBACK = true;
+const UI_CHARTER = {
+  optionMarker: "▸",
+  selectedMarker: "▶",
+  sectionFill: "─",
+  panelTitleLeft: "┌",
+  panelTitleRight: "┐",
+  panelBottomLeft: "└",
+  panelBottomRight: "┘"
+};
 const GLYPH_SET = {
   tiles: {
     ".": { ascii: ".", unicode: "·", emoji: "·" },
@@ -125,7 +135,30 @@ const GLYPH_SET = {
   },
   ui: {
     sectionLeft: { ascii: "[", unicode: "├", emoji: "├" },
-    sectionRight: { ascii: "]", unicode: "┤", emoji: "┤" }
+    sectionRight: { ascii: "]", unicode: "┤", emoji: "┤" },
+    optionMarker: { ascii: ">", unicode: "▸", emoji: "▸" },
+    panelTitleLeft: { ascii: "[", unicode: "┌", emoji: "┌" },
+    panelTitleRight: { ascii: "]", unicode: "┐", emoji: "┐" },
+    panelBottomLeft: { ascii: "[", unicode: "└", emoji: "└" },
+    panelBottomRight: { ascii: "]", unicode: "┘", emoji: "┘" }
+  }
+};
+const BIOME_TILE_GLYPH_OVERRIDES = {
+  ashroot_outskirts: {
+    ".": { ascii: ".", unicode: "·", emoji: "·" },
+    ",": { ascii: ",", unicode: "♣", emoji: "🌲" },
+    "~": { ascii: "~", unicode: "≈", emoji: "🌫" }
+  },
+  shattered_bastion: {
+    ".": { ascii: ".", unicode: "▪", emoji: "▪" },
+    ",": { ascii: ",", unicode: "¤", emoji: "🧱" },
+    "^": { ascii: "^", unicode: "▴", emoji: "🗡" }
+  },
+  umbral_hollows: {
+    ".": { ascii: ".", unicode: "∙", emoji: "∙" },
+    ",": { ascii: ",", unicode: "✦", emoji: "🕸" },
+    "~": { ascii: "~", unicode: "≋", emoji: "🌌" },
+    "^": { ascii: "^", unicode: "▲", emoji: "🩸" }
   }
 };
 const CODEX_TABS = ["CREATURES", "MATERIALS", "EQUIPMENT", "TOWN", "LORE"];
@@ -561,11 +594,13 @@ function applyPlayerTileEntryEffects(x, y) {
 }
 
 function renderMapTileSymbol(tile) {
-  let glyph = getTileGlyph(tile);
-  if (tile === "~") return `<span class="codex-meta">${glyph}</span>`;
-  if (tile === "^") return `<span class="log-damage">${glyph}</span>`;
-  if (tile === ",") return `<span class="codex-note">${glyph}</span>`;
-  return glyph;
+  let glyph = getBiomeTileGlyph(tile);
+  if (tile === "#") return wrapGridGlyph(glyph, "tile-wall");
+  if (tile === ".") return wrapGridGlyph(glyph, "tile-floor");
+  if (tile === "~") return wrapGridGlyph(glyph, "codex-meta");
+  if (tile === "^") return wrapGridGlyph(glyph, "log-damage");
+  if (tile === ",") return wrapGridGlyph(glyph, "codex-note");
+  return wrapGridGlyph(glyph);
 }
 
 function generateClusterLayout() {
@@ -1003,8 +1038,17 @@ function toggleGlyphMode() {
   localStorage.setItem("wrogue_glyph_mode", glyphMode);
 }
 
+function toggleGlyphGridPolicy() {
+  glyphGridPolicy = glyphGridPolicy === "safe" ? "vivid" : "safe";
+  localStorage.setItem("wrogue_glyph_grid_policy", glyphGridPolicy);
+}
+
 function getGlyphModeLabel() {
   return glyphMode === "ascii" ? "ASCII-safe" : "Unicode";
+}
+
+function getGlyphGridPolicyLabel() {
+  return glyphGridPolicy === "safe" ? "Safe fallback" : "Vivid emoji";
 }
 
 function isEmojiLikeGlyph(text) {
@@ -1019,7 +1063,18 @@ function getGlyph(group, key, options = {}) {
   if (glyphMode === "ascii") return entry.ascii;
 
   let candidate = entry.emoji || entry.unicode || entry.ascii;
-  if (forGrid && GLYPH_GRID_SAFE_FALLBACK && isEmojiLikeGlyph(candidate)) {
+  if (forGrid && glyphGridPolicy === "safe" && isEmojiLikeGlyph(candidate)) {
+    return entry.unicode || entry.ascii;
+  }
+  return candidate;
+}
+
+function resolveGlyphEntry(entry, options = {}) {
+  let forGrid = !!options.forGrid;
+  if (!entry) return "?";
+  if (glyphMode === "ascii") return entry.ascii;
+  let candidate = entry.emoji || entry.unicode || entry.ascii;
+  if (forGrid && glyphGridPolicy === "safe" && isEmojiLikeGlyph(candidate)) {
     return entry.unicode || entry.ascii;
   }
   return candidate;
@@ -1040,6 +1095,13 @@ function getTileGlyph(tile) {
   return getGlyph("tiles", tile, { forGrid: true });
 }
 
+function getBiomeTileGlyph(tile) {
+  let biome = getActiveBiomeDef();
+  let override = BIOME_TILE_GLYPH_OVERRIDES[biome.id]?.[tile];
+  if (override) return resolveGlyphEntry(override, { forGrid: true });
+  return getTileGlyph(tile);
+}
+
 function getProjectileGlyph() {
   return getGlyph("vfx", "projectile", { forGrid: true });
 }
@@ -1054,6 +1116,55 @@ function getSectionBrackets() {
 function getSectionHeaderDecorated(title) {
   let marks = getSectionBrackets();
   return `${marks.left} ${title} ${marks.right}`;
+}
+
+function getOptionMarker() {
+  return getGlyph("ui", "optionMarker");
+}
+
+function renderOptionLine(hotkey, label) {
+  return `<span class="system">${getOptionMarker()} ${hotkey}. ${label}</span>`;
+}
+
+function renderPanelTitle(title) {
+  let left = getGlyph("ui", "panelTitleLeft");
+  let right = getGlyph("ui", "panelTitleRight");
+  let bl = getGlyph("ui", "panelBottomLeft");
+  let br = getGlyph("ui", "panelBottomRight");
+  let fill = UI_CHARTER.sectionFill.repeat(Math.max(2, title.length + 2));
+  return `<span class="codex-title">${left}${fill}${right}\n${getGlyph("ui", "sectionLeft")} ${title} ${getGlyph("ui", "sectionRight")}\n${bl}${fill}${br}</span>`;
+}
+
+// ===== UI CONSISTENCY RULES =====
+// 1) Left panel owns context/actions/lists and narrative progression for current screen.
+// 2) Right panel owns persistent HUD (vitals, combat, run state, equipment, concise hints).
+// 3) Service-like screens share this order: title -> speaker/context -> sectioned list -> controls -> log.
+// 4) Use semantic text classes deliberately: dialogue (voice), lore (world), instruction (controls), system (state).
+function renderScreenHeader(title, speaker = "", relation = "") {
+  let text = `${renderPanelTitle(title)}\n`;
+  if (speaker) {
+    let relationText = relation ? ` · ${relation}` : "";
+    text += `<span class="dialogue">${speaker}${relationText}</span>\n`;
+  }
+  return text;
+}
+
+function renderContextLine(text, className = "codex-note") {
+  return `<span class="${className}">${text}</span>`;
+}
+
+function renderControlsBlock(context) {
+  return `${renderSectionHeader("Controls")}\n${renderScreenInstructions(context)}`;
+}
+
+function renderSymbolLegend() {
+  return `${renderSectionHeader("Symbol Legend")}
+<span class="system">UI frame: ┌ ┐ └ ┘ ─ │ ├ ┤</span>
+<span class="system">Shading: ░ light | ▒ mid | ▓ heavy | █ solid</span>
+<span class="system">Bars: ${getGlyph("bars", "filled")} filled | ${getGlyph("bars", "empty")} empty</span>
+<span class="system">Tiles: . floor | , growth | ~ mire | ^ hazard | > exit</span>
+<span class="system">Biome sample: ${getBiomeTileGlyph(",")} ${getBiomeTileGlyph("~")} ${getBiomeTileGlyph("^")}</span>
+<span class="instruction">U glyph mode | J grid policy | V legend on/off</span>`;
 }
 
 function hasAnySaveSlots() {
@@ -1078,6 +1189,21 @@ function renderStatusBar(current, max, kind = "hp", width = 10) {
   }
 
   return `<span class="status-bar ${kind === "hp" ? "status-bar-hp" : "status-bar-sta"} ${pulseClass}"><span class="status-fill">${fill.repeat(filledCount)}</span><span class="status-empty">${empty.repeat(emptyCount)}</span></span>`;
+}
+
+function wrapGridGlyph(glyph, className = "") {
+  let classAttr = className ? ` ${className}` : "";
+  return `<span class="grid-cell${classAttr}">${glyph}</span>`;
+}
+
+function renderPotionQuickLine(consumableId, hotkey, label) {
+  let count = countConsumable(consumableId);
+  let icon = consumableId === "hp_potion"
+    ? (glyphMode === "ascii" ? "+" : "🧪")
+    : (glyphMode === "ascii" ? "*" : (player.class === "orc" ? "⚡" : "✦"));
+  let countDisplay = count > 0 ? `${icon}`.repeat(Math.min(6, count)) : "-";
+  let overCount = count > 6 ? `+${count - 6}` : "";
+  return `<span class="system">${hotkey}: ${label} ${countDisplay}${overCount ? ` ${overCount}` : ""}</span>`;
 }
 
 function recordHealDelta(amount) {
@@ -1318,9 +1444,6 @@ function getDungeonContextFooter() {
 function getHudHintLines() {
   if (state === "DUNGEON") {
     return '<span class="instruction">Arrows move | Q skill | I inventory | K codex | X town</span>';
-  }
-  if (state === "MERCHANT" || state === "GUILD" || state === "BLACKSMITH" || state === "CRAFTING") {
-    return '<span class="instruction">ESC back | K codex | L log</span>';
   }
   return null;
 }
@@ -3040,6 +3163,84 @@ function isMaterial(item) {
   return item && item.type === "material";
 }
 
+function isConsumable(item) {
+  return item && item.type === "consumable";
+}
+
+function createConsumableItem(consumableId) {
+  if (consumableId === "hp_potion") {
+    return {
+      type: "consumable",
+      consumableId,
+      name: "HP Potion",
+      rarity: "uncommon",
+      icon: "🧪",
+      amount: 4,
+      resourceType: "HP",
+      description: "Restores HP quickly in the field."
+    };
+  }
+
+  return {
+    type: "consumable",
+    consumableId: "resource_potion",
+    name: `${player.class === "orc" ? "Stamina" : "Mana"} Potion`,
+    rarity: "rare",
+    icon: player.class === "orc" ? "⚡" : "✦",
+    amount: 3,
+    resourceType: player.class === "orc" ? "ST" : "MP",
+    description: "Restores class resource in the field."
+  };
+}
+
+function normalizeConsumableItem(item) {
+  if (!isConsumable(item)) return item;
+  if (!item.consumableId) item.consumableId = item.resourceType === "HP" ? "hp_potion" : "resource_potion";
+  if (!item.icon) item.icon = item.consumableId === "hp_potion" ? "🧪" : (item.resourceType === "ST" ? "⚡" : "✦");
+  if (!item.amount || item.amount < 1) item.amount = item.consumableId === "hp_potion" ? 4 : 3;
+  if (!item.resourceType) item.resourceType = item.consumableId === "hp_potion" ? "HP" : player.resourceType;
+  if (!item.description) item.description = item.consumableId === "hp_potion"
+    ? "Restores HP quickly in the field."
+    : "Restores class resource in the field.";
+  if (!item.rarity) item.rarity = item.consumableId === "hp_potion" ? "uncommon" : "rare";
+  return item;
+}
+
+function countConsumable(consumableId) {
+  return player.inventory.filter(item => isConsumable(item) && item.consumableId === consumableId).length;
+}
+
+function useConsumable(consumableId) {
+  let index = player.inventory.findIndex(item => isConsumable(item) && item.consumableId === consumableId);
+  if (index === -1) {
+    logAction(consumableId === "hp_potion" ? "No HP potions ready." : `No ${player.resourceType} potions ready.`);
+    return false;
+  }
+
+  let item = normalizeConsumableItem(player.inventory[index]);
+  if (consumableId === "hp_potion") {
+    if (player.hp >= player.maxHp) {
+      logAction("HP already full.");
+      return false;
+    }
+    let restored = Math.min(item.amount, player.maxHp - player.hp);
+    player.hp += restored;
+    recordHealDelta(restored);
+    logAction(`Used ${item.name}. Restored ${restored} HP.`);
+  } else {
+    if (player.resourceCurrent >= player.resourceMax) {
+      logAction(`${player.resourceType} already full.`);
+      return false;
+    }
+    let restored = Math.min(item.amount, player.resourceMax - player.resourceCurrent);
+    player.resourceCurrent += restored;
+    logAction(`Used ${item.name}. Restored ${restored} ${player.resourceType}.`);
+  }
+
+  player.inventory.splice(index, 1);
+  return true;
+}
+
 function createMaterialItem(materialId) {
   let def = getMaterialDefinition(materialId);
   let bonus = Math.floor((dungeon.floor - 1) / 2);
@@ -3070,7 +3271,7 @@ function normalizeMaterialStack(item) {
 }
 
 function normalizeGearItem(item) {
-  if (!item || isMaterial(item)) return item;
+  if (!item || isMaterial(item) || isConsumable(item)) return item;
   // Legacy saves can contain pre-affix gear. Normalize everything into the
   // current runtime shape before stats, codex tracking, or rendering touch it.
   if (item.rarity === "unique") {
@@ -3531,6 +3732,7 @@ function loadGame(slotIndex = 1) {
   player.inCombat = false;
   player.hp = Math.min(player.hp || player.maxHp, player.maxHp);
   player.inventory = player.inventory.map(item => isMaterial(item) ? normalizeMaterialStack(item) : normalizeGearItem(item));
+  player.inventory = player.inventory.map(item => isConsumable(item) ? normalizeConsumableItem(item) : item);
 
   for (let slot of Object.keys(player.equipment)) {
     player.equipment[slot] = normalizeGearItem(player.equipment[slot]);
@@ -3575,7 +3777,10 @@ function startGame() {
   player.x = 1;
   player.y = 1;
   player.gold = 0;
-  player.inventory = [];
+  player.inventory = [
+    createConsumableItem("hp_potion"),
+    createConsumableItem("resource_potion")
+  ];
   player.equipment = {
     head: null,
     chest: null,
@@ -3662,29 +3867,27 @@ function draw() {
   if (state === "MENU") {
     let hasSave = hasAnySaveSlots();
     gameEl.innerHTML =
-`<span class="codex-title">  ╔══════════════════════╗
-  ║    W  R  O  G  U  E  ║
-  ╚══════════════════════╝</span>
+`${renderPanelTitle("W R O G U E")}
 
 <span class="codex-note">  Darkness stirs below Ashroot.
   The guild needs hunters. You need gold.</span>
 
-  <span class="codex-section">1. New Game</span>
-  <span class="${hasSave ? "codex-section" : "codex-meta"}">2. Load Game${hasSave ? "" : "  (no save found)"}</span>
-  <span class="codex-section">3. Settings</span>`;
+  ${renderOptionLine("1", "New Game")}
+  <span class="${hasSave ? "system" : "codex-meta"}">${getOptionMarker()} 2. Load Game${hasSave ? "" : "  (no save found)"}</span>
+  ${renderOptionLine("3", "Settings")}`;
     uiEl.innerHTML = `<span class="codex-meta">wrogue — v0.1\n\nUse number keys to select.</span>`;
     return;
   }
 
   if (state === "CLASS_SELECT") {
     gameEl.innerHTML =
-`<span class="codex-title">[NEW GAME — CHOOSE CLASS]</span>
+`${renderPanelTitle("NEW GAME — CHOOSE CLASS")}
 
-  <span class="codex-section">1. The Witch</span>
+  ${renderOptionLine("1", "The Witch")}
   <span class="codex-note">  Frail and cunning. 8 HP, high ATK.
   Her hexes find cracks others miss.</span>
 
-  <span class="codex-section">2. The Orc</span>
+  ${renderOptionLine("2", "The Orc")}
   <span class="codex-note">  Stubborn and thick-skinned. 12 HP.
   Blunt force is her first answer.</span>
 
@@ -3763,7 +3966,7 @@ The locals call it the Wrogue.</span>
 
   if (state === "SETTINGS") {
     gameEl.innerHTML =
-`<span class="codex-title">[SETTINGS]</span>
+`${renderPanelTitle("SETTINGS")}
 
 <span class="codex-section">-- Key Bindings --</span>
 <span class="codex-note">  Arrows    Move / Navigate inventory or codex
@@ -3783,7 +3986,12 @@ The locals call it the Wrogue.</span>
 
 <span class="codex-section">-- Glyph Mode --</span>
 <span class="codex-note">  Current: ${getGlyphModeLabel()}
-  U         Toggle ASCII-safe / Unicode</span>
+  U         Toggle ASCII-safe / Unicode
+  J         Toggle grid policy (${getGlyphGridPolicyLabel()})
+  V         Toggle symbol legend</span>
+
+${showSettingsSymbolLegend ? `${renderSymbolLegend()}
+` : ""}
 
   <span class="codex-meta">ESC — back to menu</span>`;
     uiEl.innerHTML = `<span class="codex-meta">Settings</span>`;
@@ -3792,24 +4000,24 @@ The locals call it the Wrogue.</span>
 
   if (state === "TOWN") {
     let administrativeNote = getAdministrativeOfficeNote();
-    let townText = `<span class="codex-title">[TOWN]</span>
+    let townText = `${renderPanelTitle("TOWN")}
 
 `;
-    townText += `1. Enter Dungeon
+    townText += `${renderOptionLine("1", "Enter Dungeon")}
 `;
-    townText += `2. ${getMerchantMenuLabel()}
+    townText += `${renderOptionLine("2", getMerchantMenuLabel())}
 `;
-    townText += `3. Blacksmith
+    townText += `${renderOptionLine("3", "Blacksmith")}
 `;
-    townText += `4. ${getGuildMenuLabel()}
+    townText += `${renderOptionLine("4", getGuildMenuLabel())}
 `;
-    townText += `5. Class Crafting
+    townText += `${renderOptionLine("5", "Class Crafting")}
 `;
-    townText += `C. Inventory
+    townText += `${renderOptionLine("C", "Inventory")}
 `;
-    townText += `K. Codex
+    townText += `${renderOptionLine("K", "Codex")}
 `;
-    townText += `M. Main Menu
+    townText += `${renderOptionLine("M", "Main Menu")}
 `;
     if (administrativeNote) {
       townText += `<span class="codex-meta">${administrativeNote}</span>
@@ -3827,10 +4035,9 @@ ${renderScreenInstructions("town")}`;
   }
 
   if (state === "MERCHANT") {
-    let text = `<span class="codex-title">[${getMerchantMenuLabel().toUpperCase()}]</span>\n`;
-    text += `<span class="codex-meta">Malaphus Grell · ${getNpcRelationLabel("merchant")}</span>\n`;
+    let text = renderScreenHeader(getMerchantMenuLabel().toUpperCase(), "Malaphus Grell", getNpcRelationLabel("merchant"));
     text += `${renderSectionHeader("Sell Items")}\n`;
-    text += `<span class="codex-note">${getMerchantFlavorLine()}</span>\n\n`;
+    text += `${renderContextLine(getMerchantFlavorLine(), "dialogue")}\n\n`;
     player.inventory.forEach((item, i) => {
       if (isMaterial(item)) return;
       text += `${i}: ${renderItemNameSpan(item)} `;
@@ -3839,7 +4046,7 @@ ${renderScreenInstructions("town")}`;
       if (effectLine) text += `${effectLine}\n`;
     });
     text += renderBuybackSection();
-    text += `\n${renderScreenInstructions("merchant")}`;
+    text += `\n${renderControlsBlock("merchant")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3851,9 +4058,9 @@ ${renderScreenInstructions("town")}`;
     clampCodexSelection(items);
     let selected = items[codexSelection] || null;
 
-    let text = `<span class="codex-title">${getCodexHeaderTitle()}</span>\n`;
+    let text = `${renderPanelTitle(getCodexHeaderTitle())}\n`;
     text += `${renderCodexTabBar()}\n`;
-    text += `<span class="dialogue">${getClassFlavorHint()}</span>\n\n`;
+    text += `${getClassFlavorHint()}\n\n`;
     text += `${renderSectionHeader(codexTab)}\n`;
     if (codexTab === "EQUIPMENT") {
       text += `${renderCodexEquipmentBar()}\n`;
@@ -3869,9 +4076,10 @@ ${renderScreenInstructions("town")}`;
 
     text += `\n${renderSectionHeader("Detail")}\n`;
     text += `${renderCodexDetail(selected, codexTab)}\n`;
+    text += `\n${renderSectionHeader("Controls")}\n`;
     text += codexTab === "EQUIPMENT"
-      ? `\n${renderScreenInstructions("codex-equipment")}`
-      : `\n${renderScreenInstructions("codex")}`;
+      ? `${renderScreenInstructions("codex-equipment")}`
+      : `${renderScreenInstructions("codex")}`;
     if (atmosphereBanner) {
       text += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
     }
@@ -3882,10 +4090,9 @@ ${renderScreenInstructions("town")}`;
   }
 
   if (state === "GUILD") {
-    let text = `<span class="codex-title">[${getGuildMenuLabel().toUpperCase()}]</span>\n`;
-    text += `<span class="codex-meta">Bartholomeo Varsgo · ${getNpcRelationLabel("guild")}</span>\n`;
+    let text = renderScreenHeader(getGuildMenuLabel().toUpperCase(), "Bartholomeo Varsgo", getNpcRelationLabel("guild"));
     text += `${renderSectionHeader("Sell Materials")}\n`;
-    text += `<span class="codex-note">${getGuildFlavorLine()}</span>\n\n`;
+    text += `${renderContextLine(getGuildFlavorLine(), "dialogue")}\n\n`;
     let guildBonus = getGuildDemandBonusPerUnit();
     text += `<span class="codex-meta">craft demand bonus: +${guildBonus}g per unit</span>\n\n`;
     player.inventory.forEach((item, i) => {
@@ -3898,7 +4105,7 @@ ${renderScreenInstructions("town")}`;
     });
     text += `\n${getGuildBoardHookText()}\n`;
     text += renderBuybackSection();
-    text += `\n${renderScreenInstructions("guild")}`;
+    text += `\n${renderControlsBlock("guild")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3907,10 +4114,9 @@ ${renderScreenInstructions("town")}`;
 
   if (state === "BLACKSMITH") {
     let upgradeCost = getBlacksmithUpgradeCost();
-    let text = `<span class="codex-title">[BLACKSMITH]</span>\n`;
-    text += `<span class="codex-meta">Demeter · ${getNpcRelationLabel("blacksmith")}</span>\n`;
+    let text = renderScreenHeader("BLACKSMITH", "Demeter", getNpcRelationLabel("blacksmith"));
     text += `${renderSectionHeader("Upgrade Gear")} <span class="codex-meta">(cost ${upgradeCost}g)</span>\n`;
-    text += `<span class="codex-note">${getBlacksmithFlavorLine()}</span>\n\n`;
+    text += `${renderContextLine(getBlacksmithFlavorLine(), "dialogue")}\n\n`;
     text += `<span class="codex-meta">craft network discount: ${10 - upgradeCost}g</span>\n\n`;
     Object.entries(player.equipment).forEach(([slot, item], i) => {
       if (item) {
@@ -3920,7 +4126,7 @@ ${renderScreenInstructions("town")}`;
         if (effectLine) text += `${effectLine}\n`;
       }
     });
-    text += `\n${renderScreenInstructions("blacksmith")}`;
+    text += `\n${renderControlsBlock("blacksmith")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3929,9 +4135,9 @@ ${renderScreenInstructions("town")}`;
 
   if (state === "CRAFTING") {
     let recipes = getCraftingRecipesForClass();
-    let text = `<span class="codex-title">[CLASS CRAFTING]</span>\n`;
+    let text = renderScreenHeader("CLASS CRAFTING");
     text += `${renderSectionHeader("Recipes")}\n`;
-    text += `<span class="codex-note">${getCraftingFlavorLine()}</span>\n\n`;
+    text += `${renderContextLine(getCraftingFlavorLine(), "dialogue")}\n\n`;
     text += `<span class="codex-meta">attempts:${world.crafting.attempts} successes:${world.crafting.successes} failures:${world.crafting.failures}</span>\n\n`;
 
     if (!recipes.length) {
@@ -3947,7 +4153,7 @@ ${renderScreenInstructions("town")}`;
       });
     }
 
-    text += `\n${renderScreenInstructions("crafting")}`;
+    text += `\n${renderControlsBlock("crafting")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -3955,7 +4161,7 @@ ${renderScreenInstructions("town")}`;
   }
 
   if (state === "INVENTORY") {
-    let text = "<span class=\"codex-title\">[INVENTORY]</span>\n";
+    let text = `${renderPanelTitle("INVENTORY")}\n`;
     text += `<span class="dialogue">Pack check before descent.</span>\n`;
     text += `${renderSectionHeader("Tabs")}\n`;
     text += `<span class="system">[Tab] ${inventoryTab === "GEAR" ? "► GEAR" : "GEAR"} | ${inventoryTab === "MATERIALS" ? "► MATERIALS" : "MATERIALS"}</span>\n\n`;
@@ -3965,7 +4171,7 @@ ${renderScreenInstructions("town")}`;
     player.inventory.forEach((item, originalIndex) => {
       if (inventoryTab === "GEAR" && !isMaterial(item)) {
         filteredItems.push({ item, originalIndex });
-      } else if (inventoryTab === "MATERIALS" && isMaterial(item)) {
+      } else if (inventoryTab === "MATERIALS" && (isMaterial(item) || isConsumable(item))) {
         filteredItems.push({ item, originalIndex });
       }
     });
@@ -3979,6 +4185,11 @@ ${renderScreenInstructions("town")}`;
           normalizeMaterialStack(item);
           text += `${marker}${displayIndex}: ${renderMaterialSpan(item)} `;
           text += `<span class="codex-meta">[x${item.quantity}, ${item.value}g ea]</span>\n`;
+        } else if (isConsumable(item)) {
+          normalizeConsumableItem(item);
+          text += `${marker}${displayIndex}: <span class="${item.rarity}">${item.name}</span> `;
+          text += `<span class="codex-meta">[${item.resourceType} +${item.amount}]</span>\n`;
+          text += `<span class="codex-meta">${item.description}</span>\n`;
         } else {
           text += `${marker}${displayIndex}: ${renderItemNameSpan(item)} `;
           text += `[${item.type}/${item.slot}${item.part ? `/${item.part}` : ""}${item.hands === 2 ? "/2H" : ""}] `;
@@ -3989,7 +4200,7 @@ ${renderScreenInstructions("town")}`;
       });
     }
 
-    text += `\n${renderScreenInstructions("inventory")}`;
+    text += `\n${renderControlsBlock("inventory")}`;
     text += renderActionLog();
     gameEl.innerHTML = text;
     drawUI();
@@ -4009,7 +4220,7 @@ ${renderScreenInstructions("town")}`;
         if (visualFlash && visualFlash.x === x && visualFlash.y === y) {
           playerClass += ` tile-hit-${visualFlash.element}`;
         }
-        output += `<span class="${playerClass}">${getEntityGlyph("player")}</span>`;
+        output += wrapGridGlyph(getEntityGlyph("player"), playerClass);
         continue;
       }
 
@@ -4026,11 +4237,11 @@ ${renderScreenInstructions("town")}`;
             if (visualFlash && e.x === visualFlash.x && e.y === visualFlash.y) {
               drawClass += ` tile-hit-${visualFlash.element}`;
             }
-            output += `<span class="${drawClass}">${drawSymbol}</span>`;
+            output += wrapGridGlyph(drawSymbol, drawClass);
           } else if (e.type === "chest" && !e.opened) {
-            output += `<span class="tile-chest">${getEntityGlyph("chestClosed")}</span>`;
+            output += wrapGridGlyph(getEntityGlyph("chestClosed"), "tile-chest");
           } else if (e.type === "chest" && e.opened) {
-            output += `<span class="tile-chest-open">${getEntityGlyph("chestOpen")}</span>`;
+            output += wrapGridGlyph(getEntityGlyph("chestOpen"), "tile-chest-open");
           }
           drawn = true;
           break;
@@ -4040,9 +4251,9 @@ ${renderScreenInstructions("town")}`;
       if (!drawn) {
         let trailFx = getActiveProjectileTrailAt(x, y, now);
         if (trailFx) {
-          output += `<span class="projectile-trail projectile-${trailFx.element}">${trailFx.glyph}</span>`;
+          output += wrapGridGlyph(trailFx.glyph, `projectile-trail projectile-${trailFx.element}`);
         } else if (map[y][x] === ">") {
-          output += `<span class="tile-exit">${getTileGlyph(">")}</span>`;
+          output += wrapGridGlyph(getTileGlyph(">"), "tile-exit");
         } else {
           output += renderMapTileSymbol(map[y][x]);
         }
@@ -4072,6 +4283,8 @@ function drawUI() {
     text += `${renderSectionHeader("Vitals")}\n`;
     text += `HP: ${renderStatusBar(player.hp, player.maxHp, "hp", 10)} ${player.hp}/${player.maxHp}${deltaStr ? ` ${deltaStr}` : ""}\n`;
     text += `${player.resourceType}: ${renderStatusBar(player.resourceCurrent, player.resourceMax, "sta", 10)} ${player.resourceCurrent}/${player.resourceMax}\n`;
+    text += `${renderPotionQuickLine("hp_potion", "H", "HP potions")}\n`;
+    text += `${renderPotionQuickLine("resource_potion", "R", `${player.resourceType} potions`)}\n`;
     text += `Gold: ${player.gold}\n`;
     text += `\n${renderSectionHeader("Town State")}\n`;
     text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
@@ -4108,6 +4321,8 @@ function drawUI() {
   let deltaStr = renderHudDelta();
   text += `HP: ${renderStatusBar(player.hp, player.maxHp, "hp", 10)} ${player.hp}/${player.maxHp}${deltaStr ? ` ${deltaStr}` : ""}\n`;
   text += `${player.resourceType}: ${renderStatusBar(player.resourceCurrent, player.resourceMax, "sta", 10)} ${player.resourceCurrent}/${player.resourceMax}${player.inCombat ? " [combat]" : " [idle]"}\n`;
+  text += `${renderPotionQuickLine("hp_potion", "H", "HP potions")}\n`;
+  text += `${renderPotionQuickLine("resource_potion", "R", `${player.resourceType} potions`)}\n`;
   text += `Gold: ${player.gold}\n`;
   text += `\n${renderSectionHeader("Combat")}\n`;
   text += `ATK: ${player.atk}\n`;
@@ -4133,10 +4348,9 @@ function drawUI() {
   }
 
   text += `\n${renderSectionHeader("Hints")}\n`;
-  text += `<span class="instruction">Inventory: I | Codex: K</span>\n`;
+  text += `<span class="instruction">Inventory: I | Codex: K | L log</span>\n`;
   let hudHints = getHudHintLines();
   if (hudHints) text += `${hudHints}\n`;
-  text += `${getClassFlavorHint()}\n`;
 
   uiEl.innerHTML = text;
 }
@@ -4145,6 +4359,10 @@ function drawUI() {
 function equipItem(index, shouldLog = true) {
   let item = player.inventory[index];
   if (!item) return null;
+  if (isConsumable(item)) {
+    if (shouldLog) logAction("Consumables are used with quick keys, not equipped.");
+    return null;
+  }
   if (isMaterial(item)) {
     if (shouldLog) logAction("That is a material, not equippable gear.");
     return null;
@@ -4260,6 +4478,23 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (["TOWN", "DUNGEON", "MERCHANT", "GUILD", "BLACKSMITH", "CRAFTING", "INVENTORY", "CODEX"].includes(state)) {
+    if (e.key.toLowerCase() === "h") {
+      if (useConsumable("hp_potion")) {
+        if (state === "DUNGEON") finishTurn("", false);
+        draw();
+      }
+      return;
+    }
+    if (e.key.toLowerCase() === "r") {
+      if (useConsumable("resource_potion")) {
+        if (state === "DUNGEON") finishTurn("", false);
+        draw();
+      }
+      return;
+    }
+  }
+
   // ===== INVENTORY TABS (global) =====
   if (e.key === "Tab" && state === "CODEX") {
     e.preventDefault();
@@ -4369,6 +4604,13 @@ document.addEventListener("keydown", (e) => {
     if (e.key.toLowerCase() === "u") {
       toggleGlyphMode();
       logAction(`Glyph mode: ${getGlyphModeLabel()}.`);
+    }
+    if (e.key.toLowerCase() === "j") {
+      toggleGlyphGridPolicy();
+      logAction(`Glyph grid policy: ${getGlyphGridPolicyLabel()}.`);
+    }
+    if (e.key.toLowerCase() === "v") {
+      showSettingsSymbolLegend = !showSettingsSymbolLegend;
     }
     draw();
     return;
@@ -4786,6 +5028,11 @@ document.addEventListener("keydown", (e) => {
         player.inventory.push(item);
         registerEquipmentSeen(item);
         let chestLine = `Opened chest and found ${renderItemNameSpan(item)}.`;
+        if (Math.random() < 0.45) {
+          let potion = createConsumableItem(Math.random() < 0.5 ? "hp_potion" : "resource_potion");
+          player.inventory.push(potion);
+          chestLine += `\n<span class="${potion.rarity}">Bonus cache: ${potion.name}.</span>`;
+        }
         if (item.rarity === "unique") {
           chestLine += `\n${getUniqueStingerLine("chest")}`;
         }

@@ -103,6 +103,7 @@ body {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.01) 0%, var(--panel-bg) 100%);
   box-shadow: inset 0 0 14px var(--panel-shadow);
   transition: border-color 180ms ease, background-color 180ms ease;
+  font-family: "Courier New", "Noto Color Emoji", monospace;
 }
 
 #ui {
@@ -219,6 +220,16 @@ body {
   color: var(--sta-fill-color);
 }
 
+.grid-cell {
+  display: inline-flex;
+  width: 1.35em;
+  height: 1.15em;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
 .bar-pulse-damage .status-fill {
   animation: barPulseDamage 220ms ease-in-out 2;
 }
@@ -269,14 +280,24 @@ body {
   font-weight: bold;
 }
 
+.tile-wall {
+  color: #c9d3dc;
+}
+
+.tile-floor {
+  color: #7f8c96;
+}
+
 .codex-title {
   color: var(--title-color);
   font-weight: bold;
+  letter-spacing: 0.02em;
 }
 
 .codex-section {
   color: var(--section-color);
   font-weight: bold;
+  letter-spacing: 0.01em;
 }
 
 .codex-meta {
