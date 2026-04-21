@@ -856,7 +856,7 @@ suite("Town Progression", () => {
     const before = actionLog.length;
     maybeLogScoutReport();
     assert(actionLog.length > before, "should have logged a scout note");
-    assert(actionLog[actionLog.length - 1].includes("Scout note"), "log should contain scout note");
+    assert(actionLog[0].includes("Scout note"), "log should contain scout note");
   });
 });
 
@@ -908,6 +908,150 @@ suite("NPC Relations", () => {
     assertEqual(normalized.npcRelations.merchant, 4);
     assertEqual(normalized.npcRelations.blacksmith, 7);
     assertEqual(normalized.npcRelations.guild, 2);
+  });
+});
+
+// ── Codex Lore Unlock ─────────────────────────────────────────────────────────
+suite("Codex Lore Unlock", () => {
+  function resetLore() {
+    codex.lore = [];
+    world = createDefaultWorldState();
+  }
+
+  test("unlockLoreEntry adds a new id and returns true", () => {
+    resetLore();
+    const result = unlockLoreEntry("dungeon_notes");
+    assertEqual(result, true);
+    assert(codex.lore.includes("dungeon_notes"), "id should be in codex.lore");
+  });
+
+  test("unlockLoreEntry is idempotent — returns false on duplicate", () => {
+    resetLore();
+    unlockLoreEntry("dungeon_notes");
+    const result = unlockLoreEntry("dungeon_notes");
+    assertEqual(result, false);
+    assertEqual(codex.lore.filter(id => id === "dungeon_notes").length, 1);
+  });
+
+  test("seedStartingLoreEntries adds three base entries", () => {
+    resetLore();
+    seedStartingLoreEntries();
+    assert(codex.lore.includes("first_arrival"), "first_arrival");
+    assert(codex.lore.includes("guild_contract"), "guild_contract");
+    assert(codex.lore.includes("lore_ashroot_outskirts"), "lore_ashroot_outskirts");
+  });
+
+  test("seedStartingLoreEntries is safe to call twice", () => {
+    resetLore();
+    seedStartingLoreEntries();
+    seedStartingLoreEntries();
+    assertEqual(codex.lore.filter(id => id === "first_arrival").length, 1);
+  });
+
+  test("unlockMilestoneLore unlocks dungeon_notes on first_warden_felled", () => {
+    resetLore();
+    unlockMilestoneLore("first_warden_felled");
+    assert(codex.lore.includes("dungeon_notes"), "dungeon_notes should unlock");
+  });
+
+  test("unlockMilestoneLore unlocks lore_shattered_bastion on deep_paths_opened", () => {
+    resetLore();
+    unlockMilestoneLore("deep_paths_opened");
+    assert(codex.lore.includes("lore_shattered_bastion"));
+  });
+
+  test("unlockMilestoneLore unlocks lore_umbral_hollows on guild_attention_earned", () => {
+    resetLore();
+    unlockMilestoneLore("guild_attention_earned");
+    assert(codex.lore.includes("lore_umbral_hollows"));
+  });
+
+  test("maybeUnlockNpcLore guild unlocks ashroot_origin after first_warden_felled", () => {
+    resetLore();
+    world.milestones.completed = ["first_warden_felled"];
+    maybeUnlockNpcLore("guild");
+    assert(codex.lore.includes("ashroot_origin"));
+  });
+
+  test("maybeUnlockNpcLore guild unlocks fall_fragment_iii after guild_attention_earned", () => {
+    resetLore();
+    world.milestones.completed = ["first_warden_felled", "deep_paths_opened", "guild_attention_earned"];
+    maybeUnlockNpcLore("guild");
+    assert(codex.lore.includes("fall_fragment_iii"));
+  });
+
+  test("maybeUnlockNpcLore merchant unlocks fall_fragment_i after deep_paths_opened", () => {
+    resetLore();
+    world.milestones.completed = ["first_warden_felled", "deep_paths_opened"];
+    maybeUnlockNpcLore("merchant");
+    assert(codex.lore.includes("fall_fragment_i"));
+  });
+
+  test("maybeUnlockNpcLore merchant does nothing before deep_paths_opened", () => {
+    resetLore();
+    world.milestones.completed = [];
+    maybeUnlockNpcLore("merchant");
+    assert(!codex.lore.includes("fall_fragment_i"), "should not unlock yet");
+  });
+
+  test("maybeUnlockNpcLore blacksmith unlocks fall_fragment_ii after deep_paths_opened", () => {
+    resetLore();
+    world.milestones.completed = ["first_warden_felled", "deep_paths_opened"];
+    maybeUnlockNpcLore("blacksmith");
+    assert(codex.lore.includes("fall_fragment_ii"));
+  });
+
+  test("getCodexTabItems LORE only returns discovered entries", () => {
+    resetLore();
+    codex.lore = ["first_arrival", "dungeon_notes"];
+    const items = getCodexTabItems("LORE");
+    assertEqual(items.length, 2);
+    assert(items.every(e => codex.lore.includes(e.id)), "all returned entries must be discovered");
+  });
+
+  test("getCodexTabItems LORE returns empty when codex.lore is empty", () => {
+    resetLore();
+    const items = getCodexTabItems("LORE");
+    assertEqual(items.length, 0);
+  });
+});
+
+// ── Administrative Unlock ────────────────────────────────────────────────────
+suite("Administrative Unlock", () => {
+  function resetWorld() {
+    world = createDefaultWorldState();
+  }
+
+  test("getAdministrativeOfficeNote is empty before tier 3", () => {
+    resetWorld();
+    refreshTownProgression();
+    assertEqual(getAdministrativeOfficeNote(), "");
+  });
+
+  test("getAdministrativeOfficeNote appears at tier 3", () => {
+    resetWorld();
+    world.milestones.completed = ["first_warden_felled", "deep_paths_opened", "guild_attention_earned"];
+    refreshTownProgression();
+    assert(getAdministrativeOfficeNote().includes("City Hall"), "city hall note should be visible");
+  });
+
+  test("getGuildBoardHookText uses menu voice before tier 3", () => {
+    resetWorld();
+    player.class = "orc";
+    refreshTownProgression();
+    assertEqual(getGuildBoardHookText(), `<span class="codex-meta">${getGuildVoiceLine("menu")}</span>`);
+  });
+
+  test("getGuildBoardHookText shows city hall hook at tier 3", () => {
+    resetWorld();
+    world.milestones.completed = ["first_warden_felled", "deep_paths_opened", "guild_attention_earned"];
+    refreshTownProgression();
+    assert(getGuildBoardHookText().includes("city hall"), "guild board hook should mention city hall");
+  });
+
+  test("normalizeWorldState backfills contractBoardUnlocked for older saves", () => {
+    const normalized = normalizeWorldState({ town: { rebuildTier: 0, districtState: "ruined" } });
+    assertEqual(normalized.town.contractBoardUnlocked, false);
   });
 });
 

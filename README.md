@@ -15,6 +15,11 @@ WROGUE is currently a solo, in-progress project focused on tight loop gameplay:
   - Witch: lower HP, high pressure through arcane style
   - Orc: higher HP, frontline durability and blunt force
 - Procedural floor flow with escalating threats and biome progression
+- Town rebuild progression tied to milestone thresholds:
+  - Tier 0: ruined Ashroot
+  - Tier 1: rebuilding after the first warden falls
+  - Tier 2: restored trade district after deeper paths open
+  - Tier 3: thriving hold with guild board and provisional city hall presence
 - Town services:
   - Merchant (sell gear)
   - Guild (sell materials)
@@ -26,6 +31,10 @@ WROGUE is currently a solo, in-progress project focused on tight loop gameplay:
   - Equipment
   - Town
   - Lore
+- Lore onboarding and progression:
+  - Intro letter from Krongar Thuld establishes Ashroot, Bartholomeo Varsgo, and the Council scouting role
+  - Lore codex entries unlock through milestone clears and selected NPC interactions
+  - Merchant, Guild, and Blacksmith now surface named NPC identity and lightweight relationship status
 - Save system with up to 5 slots, slot selection, and deletion confirmation
 
 ## Tech Stack
@@ -118,13 +127,23 @@ Project layout:
 
 Main gameplay logic is currently centralized in `game/main.js`.
 
+Recent progression implementation:
+
+- Narrative onboarding now starts with a guild letter and arrival framing for Ashroot.
+- Milestone triggers currently use three progression IDs:
+  - `first_warden_felled`
+  - `deep_paths_opened`
+  - `guild_attention_earned`
+- Tier 3 currently adds a text-first administrative hook through the Guild Board and a provisional City Hall note.
+- Lore codex visibility is discovery-based rather than showing the full lore list from the start.
+
 ## Roadmap Direction
 
 Near-term focus includes:
 - More class content and recipe depth
 - Additional enemy and biome behaviors
-- Expanded guild systems (contracts/requests)
-- Continued codex and lore growth
+- Expanded guild systems (contracts/requests) beyond the current board/city hall scaffolding
+- Continued codex and lore growth, especially surname/title progression and deeper NPC arcs
 
 ---
 

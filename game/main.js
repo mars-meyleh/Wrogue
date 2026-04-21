@@ -295,6 +295,47 @@ function hasWorldMilestone(id) {
   return world.milestones.completed.includes(id);
 }
 
+const MILESTONE_LORE_UNLOCKS = {
+  first_warden_felled:   ["dungeon_notes"],
+  deep_paths_opened:     ["lore_shattered_bastion"],
+  guild_attention_earned:["lore_umbral_hollows"]
+};
+
+function unlockLoreEntry(id) {
+  if (codex.lore.includes(id)) return false;
+  codex.lore.push(id);
+  let entry = CODEX_LORE_ENTRIES.find(e => e.id === id);
+  if (entry) logAction(`Codex: "${entry.title}" added to lore records.`);
+  return true;
+}
+
+function seedStartingLoreEntries() {
+  ["first_arrival", "guild_contract", "lore_ashroot_outskirts"].forEach(id => {
+    if (!codex.lore.includes(id)) codex.lore.push(id);
+  });
+}
+
+function unlockMilestoneLore(milestoneId) {
+  let ids = MILESTONE_LORE_UNLOCKS[milestoneId] || [];
+  ids.forEach(id => unlockLoreEntry(id));
+}
+
+function maybeUnlockNpcLore(npc) {
+  if (npc === "guild") {
+    if (hasWorldMilestone("guild_attention_earned")) {
+      unlockLoreEntry("fall_fragment_iii");
+    } else if (hasWorldMilestone("first_warden_felled")) {
+      unlockLoreEntry("ashroot_origin");
+    }
+  }
+  if (npc === "merchant" && hasWorldMilestone("deep_paths_opened")) {
+    unlockLoreEntry("fall_fragment_i");
+  }
+  if (npc === "blacksmith" && hasWorldMilestone("deep_paths_opened")) {
+    unlockLoreEntry("fall_fragment_ii");
+  }
+}
+
 function refreshTownProgression() {
   let completed = world.milestones.completed;
   let town = world.town;
@@ -331,6 +372,7 @@ function completeWorldMilestone(id, message) {
   if (hasWorldMilestone(id)) return false;
   world.milestones.completed.push(id);
   refreshTownProgression();
+  unlockMilestoneLore(id);
   if (message) logAction(message);
   return true;
 }
@@ -372,6 +414,18 @@ function getNpcRelationLabel(npc) {
   if (count <= 2) return "acquaintance";
   if (count <= 5) return "known";
   return "trusted";
+}
+
+function getAdministrativeOfficeNote() {
+  if (!world.town.contractBoardUnlocked) return "";
+  return "City Hall: a provisional charter office now stands beside the guild board.";
+}
+
+function getGuildBoardHookText() {
+  if (!world.town.contractBoardUnlocked) {
+    return `<span class="codex-meta">${getGuildVoiceLine("menu")}</span>`;
+  }
+  return '<span class="codex-note">A provisional city hall desk now shares the room. Promotions, civic contracts, and outside petitions will be handled here when the board is fully staffed.</span>';
 }
 
 const BIOME_DEFS = {
@@ -611,7 +665,7 @@ function getTownStatusNote() {
   if (world.town.districtState === "ruined") return "The devastation is worse than Krongar's letter described. The lanterns barely hold.";
   if (world.town.districtState === "repairing") return "Fresh timber and stitched canvas mark the first signs of return.";
   if (world.town.districtState === "restored") return "Trade stalls and watchfires make Ashroot look lived in again.";
-  return "Caravans, contracts, and rumor now gather where only ash once settled.";
+  return "Caravans, contracts, and rumor now gather where only ash once settled. A civic desk is taking shape beside the guild hall.";
 }
 
 function getClassDiscoveryLine(kind, value) {
@@ -653,6 +707,7 @@ function maybeLogTownTierWelcome() {
   } else if (tier >= 3) {
     logAction(`Bartholomeo: '${getGuildVoiceLine("tier_3")}'`);
     logAction(`Malaphus: '${getMerchantVoiceLine("tier_3")}'`);
+    logAction("Bartholomeo: 'The city hall frame is standing. Soon this room will answer civic petitions, not just kill tallies.'");
     logAction("Krongar's ledger has been updated. The Council is aware of Ashroot.");
   }
 
@@ -2607,7 +2662,7 @@ function getCodexTabItems(tab) {
   }
 
   if (tab === "TOWN") return CODEX_TOWN_ENTRIES;
-  if (tab === "LORE") return CODEX_LORE_ENTRIES;
+  if (tab === "LORE") return CODEX_LORE_ENTRIES.filter(e => codex.lore.includes(e.id));
   return [];
 }
 
@@ -3318,6 +3373,7 @@ function loadGame(slotIndex = 1) {
     }
   }
 
+  seedStartingLoreEntries();
   calculateStats();
   initClassResource(false);
   recordDeepestFloor();
@@ -3397,6 +3453,7 @@ function startGame() {
   player.inCombat = false;
   calculateStats();
   refreshTownProgression();
+  seedStartingLoreEntries();
   recordDeepestFloor();
   saveGame(currentSaveSlot);
 }
@@ -3580,6 +3637,7 @@ The locals call it the Wrogue.</span>
 
   if (state === "TOWN") {
     let biome = getActiveBiomeDef();
+    let administrativeNote = getAdministrativeOfficeNote();
     let townText = `<span class="codex-title">[TOWN]</span>
 
 `;
@@ -3610,6 +3668,10 @@ ${renderSectionHeader("Status")}
 `;
     townText += `${getTownStatusNote()}
 `;
+    if (administrativeNote) {
+      townText += `<span class="codex-meta">${administrativeNote}</span>
+  `;
+    }
     townText += `
 ${renderScreenInstructions("town")}`;
     gameEl.innerHTML = townText;
@@ -3691,11 +3753,7 @@ ${renderScreenInstructions("town")}`;
       text += `${i}: ${renderMaterialSpan(item)} x${item.quantity} `;
       text += `<span class=\"codex-meta\">(${item.tier}, ${unitValue}g ea / ${totalValue}g total)</span>\n`;
     });
-    if (world.town.contractBoardUnlocked) {
-      text += "\n<span class=\"codex-note\">Requests are beginning to arrive from beyond Ashroot, but the board is not active yet.</span>\n";
-    } else {
-      text += `\n<span class=\"codex-meta\">${getGuildVoiceLine("menu")}</span>\n`;
-    }
+    text += `\n${getGuildBoardHookText()}\n`;
     text += renderBuybackSection();
     text += `\n${renderScreenInstructions("guild")}`;
     text += renderActionLog();
@@ -4239,6 +4297,7 @@ document.addEventListener("keydown", (e) => {
     player.gold += value;
     player.inventory.splice(i, 1);
     world.npcRelations.merchant += 1;
+    maybeUnlockNpcLore("merchant");
     logAction(`Sold ${item.name} for ${value}g.`);
     draw();
     return;
@@ -4288,6 +4347,7 @@ document.addEventListener("keydown", (e) => {
       logAction(`Sold 1 ${item.name} for ${unitValue}g.`);
     }
 
+    maybeUnlockNpcLore("guild");
     draw();
     return;
   }
@@ -4307,6 +4367,7 @@ document.addEventListener("keydown", (e) => {
       item.upgradeCount = getItemUpgradeCount(item) + 1;
       player.gold -= upgradeCost;
       world.npcRelations.blacksmith += 1;
+      maybeUnlockNpcLore("blacksmith");
       calculateStats();
       logAction(`Upgraded ${slot} (+1 ATK / +1 DEF) for ${upgradeCost}g.`);
     } else if (item && player.gold < upgradeCost) {
