@@ -16,6 +16,7 @@ let showActionLog = true;
 let loadSlotSelection = 0;
 let deleteConfirmSlot = null;
 let currentSaveSlot = 1;
+let glyphMode = localStorage.getItem("wrogue_glyph_mode") || "ascii";
 let visualFlash = null;
 let projectileTrailVfx = [];
 const MAX_ITEM_UPGRADES = 6;
@@ -77,6 +78,56 @@ let entities = [];
 const WIDTH = Math.floor(8 * 2.5);
 const HEIGHT = Math.floor(5 * 2.5);
 const SAVE_VERSION = 1;
+const THEME_NEUTRAL_STATES = [
+  "MENU",
+  "CLASS_SELECT",
+  "LOAD_SCREEN",
+  "CONFIRM_DELETE_SAVE",
+  "LORE_INTRO",
+  "SETTINGS"
+];
+const GLYPH_GRID_SAFE_FALLBACK = true;
+const GLYPH_SET = {
+  tiles: {
+    ".": { ascii: ".", unicode: "·", emoji: "·" },
+    ",": { ascii: ",", unicode: "⸱", emoji: "⸱" },
+    "~": { ascii: "~", unicode: "≈", emoji: "≈" },
+    "^": { ascii: "^", unicode: "▴", emoji: "▴" },
+    "#": { ascii: "#", unicode: "█", emoji: "█" },
+    ">": { ascii: ">", unicode: "⮞", emoji: "⮞" },
+    "T": { ascii: "T", unicode: "♣", emoji: "🌲" }
+  },
+  entities: {
+    player: { ascii: "@", unicode: "⚔", emoji: "🧙" },
+    chestClosed: { ascii: "□", unicode: "◻", emoji: "📦" },
+    chestOpen: { ascii: "▪", unicode: "◼", emoji: "📭" }
+  },
+  enemies: {
+    goblin: { ascii: "g", unicode: "ĝ", emoji: "👺" },
+    rat: { ascii: "r", unicode: "ŕ", emoji: "🐀" },
+    cave_snake: { ascii: "s", unicode: "ʂ", emoji: "🐍" },
+    stone_beetle: { ascii: "b", unicode: "β", emoji: "🪲" },
+    dungeon_guard: { ascii: "G", unicode: "Ǥ", emoji: "🛡" },
+    shadow_stalker: { ascii: "S", unicode: "§", emoji: "👤" }
+  },
+  states: {
+    ALERT: { ascii: "!", unicode: "‼", emoji: "‼" },
+    CHASE: { ascii: "»", unicode: "»", emoji: "»" },
+    ATTACK: { ascii: "*", unicode: "✱", emoji: "💥" },
+    RETURN: { ascii: "~", unicode: "↩", emoji: "↩" }
+  },
+  vfx: {
+    projectile: { ascii: "*", unicode: "✶", emoji: "✨" }
+  },
+  bars: {
+    filled: { ascii: "#", unicode: "█", emoji: "█" },
+    empty: { ascii: ".", unicode: "░", emoji: "░" }
+  },
+  ui: {
+    sectionLeft: { ascii: "[", unicode: "├", emoji: "├" },
+    sectionRight: { ascii: "]", unicode: "┤", emoji: "┤" }
+  }
+};
 const CODEX_TABS = ["CREATURES", "MATERIALS", "EQUIPMENT", "TOWN", "LORE"];
 const CODEX_EQUIPMENT_VIEWS = ["BASES", "PREFIXES", "SUFFIXES", "RELICS"];
 const CODEX_TOWN_ENTRIES = [
@@ -510,10 +561,11 @@ function applyPlayerTileEntryEffects(x, y) {
 }
 
 function renderMapTileSymbol(tile) {
-  if (tile === "~") return '<span class="codex-meta">~</span>';
-  if (tile === "^") return '<span class="log-damage">^</span>';
-  if (tile === ",") return '<span class="codex-note">,</span>';
-  return tile;
+  let glyph = getTileGlyph(tile);
+  if (tile === "~") return `<span class="codex-meta">${glyph}</span>`;
+  if (tile === "^") return `<span class="log-damage">${glyph}</span>`;
+  if (tile === ",") return `<span class="codex-note">${glyph}</span>`;
+  return glyph;
 }
 
 function generateClusterLayout() {
@@ -839,6 +891,12 @@ function logAction(message) {
 
 function applyClassTheme() {
   document.body.classList.remove("neutral-theme", "witch-theme", "orc-theme");
+
+  if (THEME_NEUTRAL_STATES.includes(state)) {
+    document.body.classList.add("neutral-theme");
+    return;
+  }
+
   if (player.class === "witch") {
     document.body.classList.add("witch-theme");
     return;
@@ -940,6 +998,88 @@ function getBuybackIndexFromKey(e) {
   return key.charCodeAt(0) - 97;
 }
 
+function toggleGlyphMode() {
+  glyphMode = glyphMode === "ascii" ? "unicode" : "ascii";
+  localStorage.setItem("wrogue_glyph_mode", glyphMode);
+}
+
+function getGlyphModeLabel() {
+  return glyphMode === "ascii" ? "ASCII-safe" : "Unicode";
+}
+
+function isEmojiLikeGlyph(text) {
+  return /\p{Extended_Pictographic}/u.test(text);
+}
+
+function getGlyph(group, key, options = {}) {
+  let forGrid = !!options.forGrid;
+  let entry = GLYPH_SET[group]?.[key];
+  if (!entry) return String(key || "?");
+
+  if (glyphMode === "ascii") return entry.ascii;
+
+  let candidate = entry.emoji || entry.unicode || entry.ascii;
+  if (forGrid && GLYPH_GRID_SAFE_FALLBACK && isEmojiLikeGlyph(candidate)) {
+    return entry.unicode || entry.ascii;
+  }
+  return candidate;
+}
+
+function getEnemyBaseGlyph(enemyType) {
+  if (GLYPH_SET.enemies[enemyType]) {
+    return getGlyph("enemies", enemyType, { forGrid: true });
+  }
+  return ENEMY_DEFS[enemyType]?.symbol || "?";
+}
+
+function getEntityGlyph(entityKey) {
+  return getGlyph("entities", entityKey, { forGrid: true });
+}
+
+function getTileGlyph(tile) {
+  return getGlyph("tiles", tile, { forGrid: true });
+}
+
+function getProjectileGlyph() {
+  return getGlyph("vfx", "projectile", { forGrid: true });
+}
+
+function getSectionBrackets() {
+  return {
+    left: getGlyph("ui", "sectionLeft"),
+    right: getGlyph("ui", "sectionRight")
+  };
+}
+
+function getSectionHeaderDecorated(title) {
+  let marks = getSectionBrackets();
+  return `${marks.left} ${title} ${marks.right}`;
+}
+
+function hasAnySaveSlots() {
+  let saves = getAllSaves();
+  return Object.keys(saves).length > 0;
+}
+
+function renderStatusBar(current, max, kind = "hp", width = 10) {
+  let safeMax = Math.max(1, max || 1);
+  let clamped = Math.max(0, Math.min(safeMax, current || 0));
+  let filledCount = Math.round((clamped / safeMax) * width);
+  let emptyCount = Math.max(0, width - filledCount);
+  let fill = getGlyph("bars", "filled");
+  let empty = getGlyph("bars", "empty");
+
+  let pulseClass = "";
+  if (kind === "hp") {
+    let hasHeal = !!(hudDelta.lastHeal && hudDelta.lastHeal.turn === turn);
+    let hasDamage = hudDelta.damageEvents.some(e => e.turn === turn || e.turn === turn - 1);
+    if (hasDamage) pulseClass = "bar-pulse-damage";
+    else if (hasHeal) pulseClass = "bar-pulse-heal";
+  }
+
+  return `<span class="status-bar ${kind === "hp" ? "status-bar-hp" : "status-bar-sta"} ${pulseClass}"><span class="status-fill">${fill.repeat(filledCount)}</span><span class="status-empty">${empty.repeat(emptyCount)}</span></span>`;
+}
+
 function recordHealDelta(amount) {
   hudDelta.lastHeal = { amount, turn };
 }
@@ -1034,7 +1174,7 @@ function renderBuybackSection() {
 }
 
 function renderSectionHeader(title) {
-  return `<span class="codex-section">-- ${title} --</span>`;
+  return `<span class="codex-section">${getSectionHeaderDecorated(title)}</span>`;
 }
 
 function renderScreenInstructions(context) {
@@ -1167,10 +1307,21 @@ function getOpenPosition() {
 // ===== ENEMY MOVEMENT AND CLASS COMBAT =====
 
 function getEnemyStateIcon(state) {
-  if (state === "ALERT") return "!";
-  if (state === "CHASE") return "»";
-  if (state === "ATTACK") return "*";
-  if (state === "RETURN") return "~";
+  if (!state || !GLYPH_SET.states[state]) return null;
+  return getGlyph("states", state, { forGrid: true });
+}
+
+function getDungeonContextFooter() {
+  return `<span class="system">${getClassCombatLabel()}: ${player.inCombat ? "ENGAGED" : "idle"} | Skill[Q]: ${getClassSkillName()} (2 ${player.resourceType})</span>`;
+}
+
+function getHudHintLines() {
+  if (state === "DUNGEON") {
+    return '<span class="instruction">Arrows move | Q skill | I inventory | K codex | X town</span>';
+  }
+  if (state === "MERCHANT" || state === "GUILD" || state === "BLACKSMITH" || state === "CRAFTING") {
+    return '<span class="instruction">ESC back | K codex | L log</span>';
+  }
   return null;
 }
 
@@ -1233,7 +1384,7 @@ function queueProjectileTrail(fromX, fromY, toX, toY, element) {
       x: pt.x,
       y: pt.y,
       element,
-      glyph: "*",
+      glyph: getProjectileGlyph(),
       startsAt: now + index * stepMs,
       endsAt: now + index * stepMs + lifeMs
     });
@@ -3509,7 +3660,7 @@ function draw() {
   applyClassTheme();
 
   if (state === "MENU") {
-    let hasSave = !!localStorage.getItem("save");
+    let hasSave = hasAnySaveSlots();
     gameEl.innerHTML =
 `<span class="codex-title">  ╔══════════════════════╗
   ║    W  R  O  G  U  E  ║
@@ -3630,13 +3781,16 @@ The locals call it the Wrogue.</span>
 <span class="codex-note">  Fixed-width terminal style.
   Designed for keyboard-only play.</span>
 
+<span class="codex-section">-- Glyph Mode --</span>
+<span class="codex-note">  Current: ${getGlyphModeLabel()}
+  U         Toggle ASCII-safe / Unicode</span>
+
   <span class="codex-meta">ESC — back to menu</span>`;
     uiEl.innerHTML = `<span class="codex-meta">Settings</span>`;
     return;
   }
 
   if (state === "TOWN") {
-    let biome = getActiveBiomeDef();
     let administrativeNote = getAdministrativeOfficeNote();
     let townText = `<span class="codex-title">[TOWN]</span>
 
@@ -3656,17 +3810,6 @@ The locals call it the Wrogue.</span>
     townText += `K. Codex
 `;
     townText += `M. Main Menu
-`;
-    townText += `
-${renderSectionHeader("Status")}
-`;
-    townText += `<span class="system">Gold: ${player.gold}  HP: ${player.hp}</span>
-`;
-    townText += `<span class="system">Town Tier: ${world.town.rebuildTier}  [${world.town.districtState}]</span>
-`;
-    townText += `<span class="system">Active Biome: ${biome.name}</span>
-`;
-    townText += `${getTownStatusNote()}
 `;
     if (administrativeNote) {
       townText += `<span class="codex-meta">${administrativeNote}</span>
@@ -3866,7 +4009,7 @@ ${renderScreenInstructions("town")}`;
         if (visualFlash && visualFlash.x === x && visualFlash.y === y) {
           playerClass += ` tile-hit-${visualFlash.element}`;
         }
-        output += `<span class="${playerClass}">@</span>`;
+        output += `<span class="${playerClass}">${getEntityGlyph("player")}</span>`;
         continue;
       }
 
@@ -3877,7 +4020,7 @@ ${renderScreenInstructions("town")}`;
           let eDef = ENEMY_DEFS[e.type];
           if (eDef) {
             let icon = getEnemyStateIcon(e.state);
-            let drawSymbol = icon || eDef.symbol;
+            let drawSymbol = icon || getEnemyBaseGlyph(e.type);
             let drawClass = getEnemyDrawClass(e.type, e.state);
             if (e.elite) drawClass += " enemy-elite-mark";
             if (visualFlash && e.x === visualFlash.x && e.y === visualFlash.y) {
@@ -3885,9 +4028,9 @@ ${renderScreenInstructions("town")}`;
             }
             output += `<span class="${drawClass}">${drawSymbol}</span>`;
           } else if (e.type === "chest" && !e.opened) {
-            output += '<span class="tile-chest">□</span>';
+            output += `<span class="tile-chest">${getEntityGlyph("chestClosed")}</span>`;
           } else if (e.type === "chest" && e.opened) {
-            output += '<span class="tile-chest-open">▪</span>';
+            output += `<span class="tile-chest-open">${getEntityGlyph("chestOpen")}</span>`;
           }
           drawn = true;
           break;
@@ -3899,7 +4042,7 @@ ${renderScreenInstructions("town")}`;
         if (trailFx) {
           output += `<span class="projectile-trail projectile-${trailFx.element}">${trailFx.glyph}</span>`;
         } else if (map[y][x] === ">") {
-          output += '<span class="tile-exit">&gt;</span>';
+          output += `<span class="tile-exit">${getTileGlyph(">")}</span>`;
         } else {
           output += renderMapTileSymbol(map[y][x]);
         }
@@ -3908,13 +4051,9 @@ ${renderScreenInstructions("town")}`;
     output += "\n";
   }
 
-  let biome = getActiveBiomeDef();
-  output += `\nDungeon Floor: ${dungeon.floor}`;
-  output += `\nBiome: ${biome.name}`;
-  output += `\n${getClassCombatLabel()}: ${player.inCombat ? '<span class="log-alert">ENGAGED</span>' : '<span class="codex-meta">idle</span>'}`;
-  output += `\n${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax} | Skill[Q]: ${getClassSkillName()} (2 ${player.resourceType})`;
-  output += `\nFloor: ${dungeon.floor}`;
-  output += `\nRooms cleared: ${dungeon.roomsCleared}`;
+  output += `\n${getDungeonContextFooter()}`;
+  let hudHints = getHudHintLines();
+  if (hudHints) output += `\n${hudHints}`;
   if (atmosphereBanner) {
     output += `\n<span class="flow-banner">${atmosphereBanner}</span>`;
   }
@@ -3930,8 +4069,11 @@ function drawUI() {
     let biome = getActiveBiomeDef();
     let text = `${getTownHeading()}\n`;
     let deltaStr = renderHudDelta();
-  text += `HP: ${player.hp}/${player.maxHp}${deltaStr ? ` ${deltaStr}` : ""}\n`;
+    text += `${renderSectionHeader("Vitals")}\n`;
+    text += `HP: ${renderStatusBar(player.hp, player.maxHp, "hp", 10)} ${player.hp}/${player.maxHp}${deltaStr ? ` ${deltaStr}` : ""}\n`;
+    text += `${player.resourceType}: ${renderStatusBar(player.resourceCurrent, player.resourceMax, "sta", 10)} ${player.resourceCurrent}/${player.resourceMax}\n`;
     text += `Gold: ${player.gold}\n`;
+    text += `\n${renderSectionHeader("Town State")}\n`;
     text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
     text += `Rebuild: Tier ${world.town.rebuildTier} [${world.town.districtState}]\n`;
     text += `Home: ${world.town.playerHomeUnlocked ? "open" : "not ready"}\n`;
@@ -3939,7 +4081,7 @@ function drawUI() {
     text += `Guild: ${world.town.contractBoardUnlocked ? "board prepared" : "buyers' desk only"}\n`;
     text += `Craft: tier ${getCraftingTier()} (${world.crafting.successes} successes)\n`;
     text += `Depth Track: ${biome.name}\n`;
-    text += `\n${getTownStatusNote()}\n`;
+    text += `\n<span class="lore">${getTownStatusNote()}</span>\n`;
     if (atmosphereBanner) text += `\n<span class="flow-banner">${atmosphereBanner}</span>\n`;
     uiEl.innerHTML = text;
     return;
@@ -3960,19 +4102,23 @@ function drawUI() {
     return;
   }
 
-  let text = `=== CHARACTER ===\n`;
+  let text = `<span class="codex-title">=== HUD ===</span>\n`;
+  text += `${renderSectionHeader("Vitals")}\n`;
   text += `Class: ${player.class || "unknown"}\n`;
   let deltaStr = renderHudDelta();
-  text += `HP: ${player.hp}/${player.maxHp}${deltaStr ? ` ${deltaStr}` : ""}\n`;
+  text += `HP: ${renderStatusBar(player.hp, player.maxHp, "hp", 10)} ${player.hp}/${player.maxHp}${deltaStr ? ` ${deltaStr}` : ""}\n`;
+  text += `${player.resourceType}: ${renderStatusBar(player.resourceCurrent, player.resourceMax, "sta", 10)} ${player.resourceCurrent}/${player.resourceMax}${player.inCombat ? " [combat]" : " [idle]"}\n`;
+  text += `Gold: ${player.gold}\n`;
+  text += `\n${renderSectionHeader("Combat")}\n`;
   text += `ATK: ${player.atk}\n`;
   text += `DEF: ${player.def}\n`;
   text += `CRIT: ${player.crit}%\n`;
   text += `DODGE: ${player.dodge}%\n`;
-  text += `${player.resourceType}: ${player.resourceCurrent}/${player.resourceMax}${player.inCombat ? " [combat]" : " [idle]"}\n`;
   text += `${getClassCombatLabel()}: ${player.inCombat ? "ENGAGED" : "idle"}\n`;
+  text += `\n${renderSectionHeader("Run")}\n`;
   text += `Floor: ${dungeon.floor} | Rooms: ${dungeon.roomsCleared}\n`;
-  text += `Gold: ${player.gold}\n\n`;
-  text += `${getClassEquipmentHeader()}\n`;
+  text += `Biome: ${getActiveBiomeDef().name}\n\n`;
+  text += `${renderSectionHeader("Equipment")}\n`;
 
   for (let [slot, item] of Object.entries(player.equipment)) {
     if (!item) {
@@ -3986,8 +4132,10 @@ function drawUI() {
     if (effectLine) text += `${effectLine}\n`;
   }
 
-  text += "\n=== HINTS ===\n";
-  text += `<span class="codex-meta">Inventory: I\nCodex: K</span>\n`;
+  text += `\n${renderSectionHeader("Hints")}\n`;
+  text += `<span class="instruction">Inventory: I | Codex: K</span>\n`;
+  let hudHints = getHudHintLines();
+  if (hudHints) text += `${hudHints}\n`;
   text += `${getClassFlavorHint()}\n`;
 
   uiEl.innerHTML = text;
@@ -4218,6 +4366,10 @@ document.addEventListener("keydown", (e) => {
 
   if (state === "SETTINGS") {
     if (e.key === "Escape") state = "MENU";
+    if (e.key.toLowerCase() === "u") {
+      toggleGlyphMode();
+      logAction(`Glyph mode: ${getGlyphModeLabel()}.`);
+    }
     draw();
     return;
   }
