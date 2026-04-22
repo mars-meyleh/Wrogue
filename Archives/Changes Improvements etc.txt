@@ -1,0 +1,44 @@
+Changes/Improvements/etc
+
+Town State and its functionalities
+
+- floor and room has clarity in it's meaning.
+- Rebuild: Tier N [state] "is readable but can be confusing without a source of information".
+- Home: status "We don't have a way to access home yet and it isn't clear even if is worth since has no functionality".
+- Trade: Merchant Guild status "again no information for the player in what this is beneficial of not".
+- Guild, craft tier are also kinda unclear and maybe unecessary, find out what is important for the player to always have on display and how to display that information in a cohesive and coherent way.
+
+Inventory Functionality
+
+- Create a new tab in the inventory for Potions and let them stack.
+- Separate the inventories so each goes into its on category that the shops interact with.
+
+Codex Functionality
+
+- Add a Tab Dungeon, with subtabs for biomes (inside biomes a list with biomes and short explanations when highlighted appears in the details more about it), creatures (inside creatures a list of the base types of the creatures, when highlighted appears details on it and if selected we go to a screen to see more details into all the variants from that species), gatherables and materials.
+
+- maybe add the entries for journaling or scouting manually? meaning: player enter codex -> lore/town -> has option to create entry -> depending on class it's given options in each topic and what to include, the player don't need to actively write but seem appropriate for it to do it's scout job like that and then create reports to send to Krongar/King's Council.
+
+
+LOG Functionality
+
+	dialogue entries behavior
+For the beginning works very well, but i want to maybe get a better way to display dialog and to make in a way that do not get repetitive, plus how to actually make the dialogues feel like a dialogue and not just a plain text that is easily ignored.
+
+maybe when entering buildings before the buying screen we have a dialogue screen for selecting the shop, talk, quest etc. then proceeding to do what was asked, in this way can be displayed the lore text connected to the dungeon progression as well, meaning: new entry in the lore, player go back to town to sell things as usual, enter merchant and see new dialogue, talk action gets a "!" mark maybe for showing that some action can be made because the player unlocked new things, etc etc etc.
+
+	resting and other similar messages
+keep it from spamming the log, make it state/screen aware, when back to town from dungeon it appears once, if you enter shops and go back to town do not show it again.
+
+later change it to be only by the campfire or at home healing in bed, not sure if day systems makes sense in this game, unless is made attached to lore/events/achievements/upgrades in town/etc.
+
+Town Functionality
+
+- Remove class crafting/inventory/codex from it since they are not buildings, we can add in the guild services the buying house service or could be attached to the lore in the first arrival act: "player arrives, has the quest from Krongar to visit the Guild first to deliver the presentation letter, with gives the dialogue for introducing the player to many functions in the game, plus by the end we get a piece of land to either construct a camp or we get an old house that we can further upgrade with gold and dungeon materials." Same could be implementend across the buildings/services/npcs, we now upgrade through interactions the tier of the town and stuff.
+
+
+Quest System Functionality
+
+Not implemented yet, but could/should work differently from guild board (that is also not fully implemented yet). The guild board is for townies to put requests there to gather items or wathever or donations for upgrades, the quests are more attached to the lore where actually matters to the progress (?) need a bit of brainstorm.
+
+

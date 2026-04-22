@@ -1,0 +1,8 @@
+Atmospheric experiennce
+
+- ASCII background animations that changes with scenes, town, dungeon, dungeon floor biomes, dungeon boss room, upgrades in the town, events (?)
+	- so far for nice impressions, fire and fireworks, and well the whole 				corruption thing actually.
+
+- ASCII Art needed: Killing Whale or create a new logo for the studio brand, the 		Ashroot tree, WROGUE in kinda gothic with those roots, the blorb virus, the corrupted background (this maybe i can do mathematically in a function actually, the roots, the codex, the anvil, the money weight thing, city and campfire.
+
+	* Could I just have the arts and use the functions on the background or should i do the whole thing an animation? 
