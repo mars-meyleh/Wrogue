@@ -76,6 +76,8 @@ let player = {
 let map = [];
 let entities = [];
 
+installDevHooks();
+
 // ===== STATIC UI DATA =====
 const WIDTH = Math.floor(8 * 2.5);
 const HEIGHT = Math.floor(5 * 2.5);
@@ -113,12 +115,12 @@ const GLYPH_SET = {
     chestOpen: { ascii: "▪", unicode: "◼", emoji: "📭" }
   },
   enemies: {
-    goblin: { ascii: "g", unicode: "ĝ", emoji: "👺" },
-    rat: { ascii: "r", unicode: "ŕ", emoji: "🐀" },
-    cave_snake: { ascii: "s", unicode: "ʂ", emoji: "🐍" },
-    stone_beetle: { ascii: "b", unicode: "β", emoji: "🪲" },
-    dungeon_guard: { ascii: "G", unicode: "Ǥ", emoji: "🛡" },
-    shadow_stalker: { ascii: "S", unicode: "§", emoji: "👤" }
+    goblin:        { ascii: "g", unicode: "g" },
+    rat:           { ascii: "r", unicode: "r" },
+    cave_snake:    { ascii: "s", unicode: "s" },
+    stone_beetle:  { ascii: "b", unicode: "b" },
+    dungeon_guard: { ascii: "d", unicode: "d" },
+    shadow_stalker:{ ascii: "x", unicode: "x" }
   },
   states: {
     ALERT: { ascii: "!", unicode: "‼", emoji: "‼" },
@@ -143,6 +145,70 @@ const GLYPH_SET = {
     panelBottomRight: { ascii: "]", unicode: "┘", emoji: "┘" }
   }
 };
+
+// ── Element variant glyphs ──────────────────────────────────────────────────
+// Diacritics encode element type; each mark has one global meaning.
+//   Acute  ´  → fire    │  Caron ˇ → frost
+//   Dot above ˙ → poison │  Umlaut ¨ → shock
+// Neutral monsters use the plain base letter (no diacritic).
+// Uppercase is reserved for boss-tier only.
+const ELEMENT_VARIANT_GLYPHS = {
+  goblin: {
+    fire:   "ǵ",          // g + acute   (U+01F5)
+    frost:  "ǧ",          // g + caron   (U+01E7)
+    poison: "ġ",          // g + dot     (U+0121)
+    shock:  "g\u0308"     // g + umlaut  (combining)
+  },
+  rat: {
+    fire:   "ŕ",          // r + acute   (U+0155)
+    frost:  "ř",          // r + caron   (U+0159)
+    poison: "ṙ",          // r + dot     (U+1E59)
+    shock:  "r\u0308"     // r + umlaut  (combining)
+  },
+  cave_snake: {
+    fire:   "ś",          // s + acute   (U+015B)
+    frost:  "š",          // s + caron   (U+0161)
+    poison: "ṡ",          // s + dot     (U+1E61)
+    shock:  "s\u0308"     // s + umlaut  (combining)
+  },
+  stone_beetle: {
+    fire:   "b\u0301",    // b + acute   (combining; no precomposed)
+    frost:  "b\u030C",    // b + caron   (combining; no precomposed)
+    poison: "ḃ",          // b + dot     (U+1E03)
+    shock:  "b\u0308"     // b + umlaut  (combining)
+  },
+  dungeon_guard: {
+    fire:   "d\u0301",    // d + acute   (combining; no precomposed)
+    frost:  "ď",          // d + caron   (U+010F)
+    poison: "ḋ",          // d + dot     (U+1E0B)
+    shock:  "d\u0308"     // d + umlaut  (combining)
+  },
+  shadow_stalker: {
+    fire:   "x\u0301",    // x + acute   (combining; no precomposed)
+    frost:  "x\u030C",    // x + caron   (combining; no precomposed)
+    poison: "ẋ",          // x + dot     (U+1E8B)
+    shock:  "ẍ"           // x + umlaut  (U+1E8D)
+  }
+};
+const ELEMENT_TYPES = ["fire", "frost", "poison", "shock"];
+
+const BOSS_VARIANT_GLYPHS = {
+  goblin:         "G",
+  rat:            "R",
+  cave_snake:     "S",
+  stone_beetle:   "B",
+  dungeon_guard:  "D",
+  shadow_stalker: "X"
+};
+
+const TIER_MODIFIERS = {
+  weak:   { hpMult: 0.7,  atkMult: 0.7,  defMult: 0.7  },
+  normal: { hpMult: 1.0,  atkMult: 1.0,  defMult: 1.0  },
+  strong: { hpMult: 1.3,  atkMult: 1.3,  defMult: 1.3  },
+  elite:  { hpMult: 1.6,  atkMult: 1.4,  defMult: 1.4  },
+  boss:   { hpMult: 2.5,  atkMult: 2.0,  defMult: 1.5  }
+};
+
 const BIOME_TILE_GLYPH_OVERRIDES = {
   ashroot_outskirts: {
     ".": { ascii: ".", unicode: "·", emoji: "·" },
@@ -1080,7 +1146,17 @@ function resolveGlyphEntry(entry, options = {}) {
   return candidate;
 }
 
-function getEnemyBaseGlyph(enemyType) {
+function getEnemyBaseGlyph(enemyType, elementType, tier) {
+  // Boss tier: uppercase base letter (reserved)
+  if (tier === "boss") {
+    let bossGlyph = BOSS_VARIANT_GLYPHS[enemyType];
+    if (bossGlyph) return glyphMode === "ascii" ? bossGlyph : bossGlyph;
+  }
+  // Elemental variant: diacritic encodes element (unicode mode only)
+  if (glyphMode === "unicode" && elementType && ELEMENT_VARIANT_GLYPHS[enemyType]?.[elementType]) {
+    return ELEMENT_VARIANT_GLYPHS[enemyType][elementType];
+  }
+  // Neutral: plain base letter from GLYPH_SET
   if (GLYPH_SET.enemies[enemyType]) {
     return getGlyph("enemies", enemyType, { forGrid: true });
   }
@@ -1191,6 +1267,16 @@ function renderStatusBar(current, max, kind = "hp", width = 10) {
   return `<span class="status-bar ${kind === "hp" ? "status-bar-hp" : "status-bar-sta"} ${pulseClass}"><span class="status-fill">${fill.repeat(filledCount)}</span><span class="status-empty">${empty.repeat(emptyCount)}</span></span>`;
 }
 
+function renderConsumableCounter(count, kind = "hp", width = 5) {
+  let safeWidth = Math.max(1, width || 1);
+  let clamped = Math.max(0, Math.min(safeWidth, count || 0));
+  let fill = getGlyph("bars", "filled");
+  let empty = getGlyph("bars", "empty");
+  let overflow = count > safeWidth ? ` +${count - safeWidth}` : "";
+
+  return `<span class="status-bar potion-counter ${kind === "hp" ? "status-bar-hp potion-counter-hp" : "status-bar-sta potion-counter-sta"}"><span class="status-fill">${fill.repeat(clamped)}</span><span class="status-empty">${empty.repeat(Math.max(0, safeWidth - clamped))}</span></span><span class="potion-total ${kind === "hp" ? "potion-total-hp" : "potion-total-sta"}">x${count}</span>${overflow ? `<span class="potion-overflow">${overflow}</span>` : ""}`;
+}
+
 function wrapGridGlyph(glyph, className = "") {
   let classAttr = className ? ` ${className}` : "";
   return `<span class="grid-cell${classAttr}">${glyph}</span>`;
@@ -1201,9 +1287,10 @@ function renderPotionQuickLine(consumableId, hotkey, label) {
   let icon = consumableId === "hp_potion"
     ? (glyphMode === "ascii" ? "+" : "🧪")
     : (glyphMode === "ascii" ? "*" : (player.class === "orc" ? "⚡" : "✦"));
-  let countDisplay = count > 0 ? `${icon}`.repeat(Math.min(6, count)) : "-";
-  let overCount = count > 6 ? `+${count - 6}` : "";
-  return `<span class="system">${hotkey}: ${label} ${countDisplay}${overCount ? ` ${overCount}` : ""}</span>`;
+  let counterKind = consumableId === "hp_potion" ? "hp" : "sta";
+  let kindClass = counterKind === "hp" ? "potion-quick-row-hp" : "potion-quick-row-sta";
+  let badgeClass = counterKind === "hp" ? "potion-badge-hp" : "potion-badge-sta";
+  return `<span class="system potion-quick-row ${kindClass}"><span class="potion-hotkey">${hotkey}</span>: <span class="potion-label">${label}</span> <span class="potion-badge ${badgeClass}">${icon}</span> ${renderConsumableCounter(count, counterKind, 5)}</span>`;
 }
 
 function recordHealDelta(amount) {
@@ -1448,8 +1535,10 @@ function getHudHintLines() {
   return null;
 }
 
-function getEnemyDrawClass(enemyType, state) {
-  let base = ENEMY_DEFS[enemyType]?.colorClass || "enemy-common";
+function getEnemyDrawClass(enemyType, state, elementType, tier) {
+  let base = ENEMY_DEFS[enemyType]?.colorClass || "monster-common";
+  if (tier === "boss") base += " monster-boss";
+  if (elementType && ELEMENT_TYPES.includes(elementType)) base += ` element-${elementType}`;
   if (state === "ALERT") return `${base} enemy-alert`;
   if (state === "CHASE") return `${base} enemy-chase`;
   if (state === "ATTACK") return `${base} enemy-attack`;
@@ -2675,7 +2764,8 @@ const ENEMY_DEFS = {
     role: "roamer",
     anomalyTags: [],
     knownInteractions: "Follows a stronger leader when present. Dangerous when massed.",
-    colorClass: "enemy-goblin",
+    colorClass: "monster-goblin",
+    eliteStyle: "bold",
     hp: 5, atk: 2, def: 0,
     behavior: {},
     lore: [
@@ -2697,7 +2787,8 @@ const ENEMY_DEFS = {
     role: "scout",
     anomalyTags: ["flees"],
     knownInteractions: "Scatters when wounded. Easier to ignore than other threats.",
-    colorClass: "enemy-rat",
+    colorClass: "monster-rat",
+    eliteStyle: "italic",
     hp: 2, atk: 1, def: 0,
     behavior: { flees: true },
     lore: [
@@ -2718,7 +2809,8 @@ const ENEMY_DEFS = {
     role: "predator",
     anomalyTags: ["first_strike"],
     knownInteractions: "Strikes before you close distance. Closing safely requires care.",
-    colorClass: "enemy-snake",
+    colorClass: "monster-snake",
+    eliteStyle: "italic",
     hp: 4, atk: 2, def: 0,
     behavior: { firstStrike: true },
     lore: [
@@ -2739,7 +2831,8 @@ const ENEMY_DEFS = {
     role: "guardian",
     anomalyTags: ["armored"],
     knownInteractions: "High defense makes it costly without strong offense. Pairs well with guards.",
-    colorClass: "enemy-beetle",
+    colorClass: "monster-beetle",
+    eliteStyle: "bold",
     hp: 6, atk: 1, def: 2,
     behavior: {},
     lore: [
@@ -2754,13 +2847,14 @@ const ENEMY_DEFS = {
   },
   dungeon_guard: {
     name: "Dungeon Guard",
-    symbol: "G",
+    symbol: "d",
     family: "Dungeon Wardens",
     biome: "shattered_bastion",
     role: "guardian",
     anomalyTags: [],
     knownInteractions: "Throws barbed javelins before you close in. Break line or rush quickly.",
-    colorClass: "enemy-elite",
+    colorClass: "monster-guard",
+    eliteStyle: "bold",
     hp: 10, atk: 3, def: 3,
     behavior: { range: 3 },
     lore: [
@@ -2775,13 +2869,14 @@ const ENEMY_DEFS = {
   },
   shadow_stalker: {
     name: "Shadow Stalker",
-    symbol: "S",
+    symbol: "x",
     family: "Deep Dwellers",
     biome: "umbral_hollows",
     role: "apex",
     anomalyTags: ["first_strike"],
     knownInteractions: "Its advantage is worst in cramped corridors. Draw it into open space.",
-    colorClass: "enemy-corrupted",
+    colorClass: "monster-stalker",
+    eliteStyle: "italic",
     hp: 7, atk: 4, def: 0,
     behavior: { firstStrike: true },
     lore: [
@@ -3118,9 +3213,33 @@ function spawnEnemy(type, x, y) {
     def: defStat,
     range: def.behavior?.range || 1,
     elite,
+    elementType: null,
+    tier: elite ? "elite" : "normal",
     statusEffects: []
   };
   if (def.behavior?.firstStrike) entity.firstHit = true;
+  return entity;
+}
+
+// Spawn a monster with explicit element and tier.
+// elementType: "fire"|"frost"|"poison"|"shock"|null
+// tier: "weak"|"normal"|"strong"|"elite"|"boss"
+function spawnEnemyVariant(type, elementType, tier, x, y) {
+  let entity = spawnEnemy(type, x, y);
+  let mod = TIER_MODIFIERS[tier] || TIER_MODIFIERS.normal;
+
+  let def = ENEMY_DEFS[type];
+  let baseHp  = def.hp  + (dungeon.floor - 1) * 3;
+  let baseAtk = def.atk + Math.floor(dungeon.floor * 0.9);
+  let baseDef = def.def + Math.floor((dungeon.floor - 1) / 2);
+
+  entity.hp     = Math.max(1, Math.round(baseHp  * mod.hpMult));
+  entity.maxHp  = entity.hp;
+  entity.atk    = Math.max(1, Math.round(baseAtk * mod.atkMult));
+  entity.def    = Math.max(0, Math.round(baseDef * mod.defMult));
+  entity.elementType = ELEMENT_TYPES.includes(elementType) ? elementType : null;
+  entity.tier   = tier;
+  entity.elite  = (tier === "elite" || tier === "boss");
   return entity;
 }
 
@@ -3136,6 +3255,9 @@ function registerEnemySeen(type) {
       seen: 0,
       kills: 0
     };
+  } else {
+    codex.enemies[type].colorClass = def.colorClass;
+    codex.enemies[type].symbol = def.symbol;
   }
   codex.enemies[type].seen++;
   maybeLogFamilyDiscovery(def.family);
@@ -3208,6 +3330,45 @@ function normalizeConsumableItem(item) {
 
 function countConsumable(consumableId) {
   return player.inventory.filter(item => isConsumable(item) && item.consumableId === consumableId).length;
+}
+
+function setConsumableCount(consumableId, count) {
+  let safeCount = Math.max(0, Math.floor(Number(count) || 0));
+  player.inventory = player.inventory.filter(item => !(isConsumable(item) && item.consumableId === consumableId));
+  for (let i = 0; i < safeCount; i++) {
+    player.inventory.push(createConsumableItem(consumableId));
+  }
+}
+
+function refreshUIAfterDevMutation() {
+  draw();
+  drawUI();
+}
+
+function installDevHooks() {
+  if (typeof window === "undefined" || window.__wrogueDevInstalled) return;
+
+  window.__wrogueDev = Object.assign(window.__wrogueDev || {}, {
+    setPotionCounts(hpCount = countConsumable("hp_potion"), resourceCount = countConsumable("resource_potion")) {
+      setConsumableCount("hp_potion", hpCount);
+      setConsumableCount("resource_potion", resourceCount);
+      refreshUIAfterDevMutation();
+      return {
+        hp: countConsumable("hp_potion"),
+        resource: countConsumable("resource_potion"),
+        resourceType: player.resourceType
+      };
+    },
+    getPotionCounts() {
+      return {
+        hp: countConsumable("hp_potion"),
+        resource: countConsumable("resource_potion"),
+        resourceType: player.resourceType
+      };
+    }
+  });
+
+  window.__wrogueDevInstalled = true;
 }
 
 function useConsumable(consumableId) {
@@ -4231,9 +4392,12 @@ ${renderScreenInstructions("town")}`;
           let eDef = ENEMY_DEFS[e.type];
           if (eDef) {
             let icon = getEnemyStateIcon(e.state);
-            let drawSymbol = icon || getEnemyBaseGlyph(e.type);
-            let drawClass = getEnemyDrawClass(e.type, e.state);
-            if (e.elite) drawClass += " enemy-elite-mark";
+            let drawSymbol = icon || getEnemyBaseGlyph(e.type, e.elementType, e.tier);
+            let drawClass = getEnemyDrawClass(e.type, e.state, e.elementType, e.tier);
+            if (e.elite) {
+              let eliteStyle = ENEMY_DEFS[e.type]?.eliteStyle || "bold";
+              drawClass += ` elite-${eliteStyle}`;
+            }
             if (visualFlash && e.x === visualFlash.x && e.y === visualFlash.y) {
               drawClass += ` tile-hit-${visualFlash.element}`;
             }

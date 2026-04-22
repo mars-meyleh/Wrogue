@@ -15,6 +15,12 @@
   --bar-empty-color: #4a4a4a;
   --bar-damage-pulse: #ff6b6b;
   --bar-heal-pulse: #72dd7e;
+  --pattern-ink: rgba(82, 255, 126, 0.30);
+  --pattern-corruption: rgba(182, 96, 255, 0.34);
+  --pattern-corruption-warm: rgba(164, 110, 255, 0.26);
+  --bg-tile-size: clamp(900px, 105vw, 1900px);
+  --scanline-step: clamp(3px, 0.35vw, 5px);
+  --panel-height: clamp(28rem, 72vh, 38rem);
 }
 
 body.neutral-theme {
@@ -46,6 +52,9 @@ body.witch-theme {
   --bar-empty-color: #486074;
   --bar-damage-pulse: #ff8080;
   --bar-heal-pulse: #8af0b1;
+  --pattern-ink: rgba(94, 255, 154, 0.30);
+  --pattern-corruption: rgba(196, 126, 255, 0.34);
+  --pattern-corruption-warm: rgba(174, 128, 255, 0.24);
 }
 
 body.orc-theme {
@@ -64,6 +73,9 @@ body.orc-theme {
   --bar-empty-color: #6a5948;
   --bar-damage-pulse: #ff8d6d;
   --bar-heal-pulse: #a8ef85;
+  --pattern-ink: rgba(104, 238, 130, 0.28);
+  --pattern-corruption: rgba(186, 122, 246, 0.30);
+  --pattern-corruption-warm: rgba(158, 116, 236, 0.22);
 }
 
 body {
@@ -75,24 +87,100 @@ body {
   align-items: flex-start;
   min-height: 100vh;
   margin: 0;
-  padding: 20px;
+  padding: clamp(10px, 2vw, 20px);
   box-sizing: border-box;
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.24;
+  background-repeat: repeat;
+  background-size: var(--bg-tile-size) auto;
+  background-position: center top;
+  background-image:
+    linear-gradient(var(--pattern-ink), var(--pattern-ink)),
+    url("assets/ascii-bg.svg");
+  background-blend-mode: screen, normal;
+  filter: contrast(1.05) brightness(0.9);
+  animation: patternDrift 34s linear infinite;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.2;
+  background-repeat: repeat, repeat, repeat;
+  background-size: var(--bg-tile-size) auto, var(--bg-tile-size) auto, 100% var(--scanline-step);
+  background-position: center top, center top, 0 0;
+  background-image:
+    linear-gradient(var(--pattern-corruption), var(--pattern-corruption)),
+    url("assets/ascii-bg.svg"),
+    repeating-linear-gradient(180deg, var(--pattern-corruption-warm) 0px, var(--pattern-corruption-warm) 1px, transparent 1px, transparent 4px);
+  background-blend-mode: normal, normal, normal;
+  mix-blend-mode: normal;
+  filter: hue-rotate(248deg) saturate(2.1) brightness(1.04) blur(0.22px);
+  animation: corruptionJitter 5.2s steps(14, end) infinite, corruptionFlicker 9s ease-in-out infinite;
+}
+
+@keyframes patternDrift {
+  0% { background-position: 0 0; }
+  100% { background-position: -180px 120px; }
+}
+
+@keyframes corruptionJitter {
+  0%, 100% { transform: translate(0, 0) skewX(0deg); }
+  18% { transform: translate(-2px, 1px) skewX(-0.5deg); }
+  34% { transform: translate(3px, -1px) skewX(0.7deg); }
+  49% { transform: translate(-1px, 2px) skewX(-0.8deg); }
+  68% { transform: translate(2px, 0) skewX(0.4deg); }
+  84% { transform: translate(-3px, -1px) skewX(-0.6deg); }
+}
+
+@keyframes corruptionFlicker {
+  0%, 100% { opacity: 0.09; }
+  10% { opacity: 0.18; }
+  27% { opacity: 0.12; }
+  41% { opacity: 0.24; }
+  63% { opacity: 0.13; }
+  77% { opacity: 0.2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after {
+    animation: none;
+  }
+
+  body::after {
+    opacity: 0.08;
+  }
 }
 
 #container {
   display: flex;
-  gap: 24px;
+  gap: clamp(10px, 2vw, 24px);
   align-items: flex-start;
   width: min(140ch, 100%);
+  position: relative;
+  z-index: 1;
 }
 
 #game {
   font-size: 18px;
   line-height: 1.2;
-  min-width: 320px;
+  min-width: min(320px, 100%);
   width: 58ch;
-  min-height: 34em;
-  max-height: 34em;
+  min-height: 24rem;
+  height: var(--panel-height);
+  max-height: var(--panel-height);
   overflow-y: auto;
   overflow-x: hidden;
   white-space: pre-wrap;
@@ -108,10 +196,11 @@ body {
 
 #ui {
   font-size: 14px;
-  min-width: 220px;
+  min-width: min(220px, 100%);
   width: 64ch;
-  min-height: 34em;
-  max-height: 34em;
+  min-height: 24rem;
+  height: var(--panel-height);
+  max-height: var(--panel-height);
   overflow-y: auto;
   overflow-x: hidden;
   white-space: pre-wrap;
@@ -132,7 +221,29 @@ body {
 
   #game,
   #ui {
-    width: min(92vw, 64ch);
+    width: min(94vw, 64ch);
+    max-width: 100%;
+    height: clamp(18rem, 42vh, 28rem);
+    max-height: clamp(18rem, 42vh, 28rem);
+  }
+}
+
+@media (max-width: 700px) {
+  body {
+    align-items: stretch;
+  }
+
+  #container {
+    gap: 10px;
+  }
+
+  #game {
+    font-size: 16px;
+    line-height: 1.16;
+  }
+
+  #ui {
+    font-size: 13px;
   }
 }
 
@@ -204,6 +315,11 @@ body {
   white-space: nowrap;
 }
 
+.potion-counter {
+  display: inline-block;
+  min-width: 5ch;
+}
+
 .status-fill {
   font-weight: bold;
 }
@@ -218,6 +334,55 @@ body {
 
 .status-bar-sta .status-fill {
   color: var(--sta-fill-color);
+}
+
+.potion-quick-row {
+  white-space: nowrap;
+}
+
+.potion-quick-row-hp .potion-label,
+.potion-quick-row-hp .potion-total {
+  color: var(--hp-fill-color);
+}
+
+.potion-quick-row-sta .potion-label,
+.potion-quick-row-sta .potion-total {
+  color: var(--sta-fill-color);
+}
+
+.potion-hotkey {
+  color: var(--section-color);
+  font-weight: bold;
+}
+
+.potion-label {
+  color: var(--note-color);
+}
+
+.potion-badge {
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: center;
+  font-weight: bold;
+}
+
+.potion-badge-hp {
+  color: var(--hp-fill-color);
+}
+
+.potion-badge-sta {
+  color: var(--sta-fill-color);
+}
+
+.potion-total {
+  color: var(--note-color);
+  margin-left: 0.45em;
+  font-weight: bold;
+}
+
+.potion-overflow {
+  color: var(--meta-color);
+  margin-left: 0.35em;
 }
 
 .grid-cell {
@@ -407,6 +572,73 @@ body {
   font-weight: bold;
   text-shadow: 0 0 5px rgba(255, 255, 255, 0.25);
 }
+
+/* ── Monster glyph language ─────────────────────────────────────────────────
+   Color encodes biome origin. Bold/italic are elite traits per monster def.
+   Uppercase letters are reserved for boss-tier only.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.monster-common   { color: #92b17d; }
+
+/* Ashroot Outskirts — surface/organic tones */
+.monster-goblin   { color: #45d05f; }
+.monster-rat      { color: #a08878; }
+.monster-snake    { color: #b5d94e; }
+
+/* Shattered Bastion — stone/metal tones */
+.monster-beetle   { color: #c49a3c; }
+.monster-guard    { color: #9aaabf; }
+
+/* Umbral Hollows — deep/spectral tones */
+.monster-stalker  { color: #59c4e6; }
+
+/* Boss tier (uppercase glyph, reserved) */
+.monster-boss     { color: #ff6161; font-weight: bold; }
+
+/* Biome containers (.biome-ashroot, .biome-shattered-bastion, .biome-umbral-hollows)
+   will receive element-overlay rules in a later phase. */
+
+/* Elite typography traits — assigned per monster definition, case-by-case.
+   elite-bold  → armored or heavy variant.
+   elite-italic → agile or fast-striking variant. */
+.elite-bold {
+  font-weight: bold;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.25);
+}
+
+.elite-italic {
+  font-style: italic;
+  text-shadow: 0 0 5px rgba(200, 200, 255, 0.25);
+}
+
+/* ── Element overlay classes ─────────────────────────────────────────────────
+   Applied on top of biome color. Each diacritic type has one element meaning:
+     Acute ´ → fire  |  Caron ˇ → frost
+     Dot ˙   → poison |  Umlaut ¨ → shock
+   State colors (alert/chase/attack) remain dominant — they override via
+   higher specificity rules below.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.element-fire   { color: #e8683a; text-shadow: 0 0 4px rgba(232, 104, 58, 0.5); }
+.element-frost  { color: #7ec8e3; text-shadow: 0 0 4px rgba(126, 200, 227, 0.5); }
+.element-poison { color: #88c057; text-shadow: 0 0 4px rgba(136, 192, 87, 0.5); }
+.element-shock  { color: #d4c03a; text-shadow: 0 0 4px rgba(212, 192, 58, 0.5); }
+
+/* State overrides: ensure alert/chase/attack remain readable over element colors */
+.element-fire.enemy-alert,
+.element-frost.enemy-alert,
+.element-poison.enemy-alert,
+.element-shock.enemy-alert   { color: #ffe067; text-shadow: none; }
+
+.element-fire.enemy-chase,
+.element-frost.enemy-chase,
+.element-poison.enemy-chase,
+.element-shock.enemy-chase   { color: #ff9f5f; text-shadow: 0 0 6px rgba(255, 159, 95, 0.45); }
+
+.element-fire.enemy-attack,
+.element-frost.enemy-attack,
+.element-poison.enemy-attack,
+.element-shock.enemy-attack  { color: #ff5f5f; text-shadow: 0 0 8px rgba(255, 95, 95, 0.55); }
 
 @keyframes tileFlash {
   0%   { opacity: 1; }
