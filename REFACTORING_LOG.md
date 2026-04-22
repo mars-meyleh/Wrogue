@@ -14,7 +14,7 @@ Systems-first extraction tracker for splitting game/main.js safely.
 | Phase | Scope | Status | Notes |
 | --- | --- | --- | --- |
 | 0 | In-file section headers and extraction markers | Complete | Added architecture separators in game/main.js and game/style.css. |
-| 1 | content/* constants and registries | Pending | Lowest risk; no runtime behavior logic. |
+| 1 | content/* constants and registries | Complete | Created game/content/: glyphs.js, biomes.js, codex-content.js, items.js, materials.js, recipes.js, enemies.js. Removed ~820 lines from main.js. Updated index.html and test.html script loading order. |
 | 2 | ui/glyphs + systems/narrative | Pending | Low coupling utility extraction. |
 | 3 | systems/codex | Pending | Keep codex object shape stable. |
 | 4 | systems/inventory foundation | Pending | Keep save compatibility and item normalization parity. |
