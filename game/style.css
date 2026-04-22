@@ -1,3 +1,9 @@
+/* ========================================================================== */
+/* THEME TOKENS
+   Responsibility: global color and sizing variables used across all UI parts.
+   Extract to: styles/tokens.css
+*/
+/* ========================================================================== */
 :root {
   --bg-main: #000000;
   --fg-main: #d0d0d0;
@@ -78,6 +84,12 @@ body.orc-theme {
   --pattern-corruption-warm: rgba(158, 116, 236, 0.22);
 }
 
+/* ========================================================================== */
+/* BASE LAYOUT + BACKGROUND ATMOSPHERE
+   Responsibility: page-level layout, background layers, and global motion.
+   Extract to: styles/base.css + styles/effects/background.css
+*/
+/* ========================================================================== */
 body {
   background: radial-gradient(circle at 20% 10%, #121212 0%, var(--bg-main) 55%);
   color: var(--fg-main);
@@ -247,6 +259,12 @@ body::after {
   }
 }
 
+/* ========================================================================== */
+/* TYPOGRAPHY + SEMANTIC TEXT CLASSES
+   Responsibility: rarity colors, dialogue/lore/system text semantics.
+   Extract to: styles/typography.css
+*/
+/* ========================================================================== */
 /* rarity colors */
 .common { color: #aaa; }
 .uncommon { color: #8ed081; }
@@ -295,6 +313,12 @@ body::after {
   font-weight: bold;
 }
 
+/* ========================================================================== */
+/* HUD COMPONENT STYLES
+   Responsibility: bars, potion rows, transient delta animations, HUD utility UI.
+   Extract to: styles/components/hud.css
+*/
+/* ========================================================================== */
 /* HUD delta feedback in side panel */
 .hud-delta-heal {
   color: #5fd37a;
@@ -421,6 +445,12 @@ body::after {
   100% { opacity: 0; }
 }
 
+/* ========================================================================== */
+/* DUNGEON TILE + MAP VISUALS
+   Responsibility: map glyph classes, codex/log states, enemy markers, tile effects.
+   Extract to: styles/components/dungeon.css + styles/components/log.css
+*/
+/* ========================================================================== */
 .tile-player {
   color: var(--player-color);
   text-shadow: 0 0 8px var(--player-glow);
@@ -718,6 +748,12 @@ body::after {
   text-shadow: 0 0 8px rgba(255, 163, 80, 0.85);
 }
 
+/* ========================================================================== */
+/* PROJECTILE + HIT VFX
+   Responsibility: combat flashes and projectile animation/color variants.
+   Extract to: styles/effects/combat-vfx.css
+*/
+/* ========================================================================== */
 @keyframes projectilePulse {
   0%   { opacity: 0.15; transform: scale(0.85); }
   40%  { opacity: 1; transform: scale(1.08); }
@@ -785,6 +821,12 @@ body::after {
   text-shadow: 0 0 8px rgba(255, 163, 80, 0.75);
 }
 
+/* ========================================================================== */
+/* MATERIAL COLOR CLASSES
+   Responsibility: material rarity palette used in inventory and codex lists.
+   Extract to: styles/components/materials.css
+*/
+/* ========================================================================== */
 .material-common {
   color: #b89566;
 }

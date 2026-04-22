@@ -1,7 +1,16 @@
+// ============================================================================
+// ENTRYPOINT BOOTSTRAP + RUNTIME SINGLETONS
+// Responsibility: bind DOM roots and hold in-memory game runtime state.
+// Extract to: state/game.js + state/runtime.js (later phases)
+// ============================================================================
 const gameEl = document.getElementById("game");
 const uiEl = document.getElementById("ui");
 
-// ===== RUNTIME STATE =====
+// ============================================================================
+// RUNTIME STATE
+// Responsibility: mutable runtime values used across all game modes.
+// Extract to: state/game.js
+// ============================================================================
 let state = "MENU";
 let turn = 0;
 let actionLog = ["Welcome to Wrogue."];
@@ -78,7 +87,12 @@ let entities = [];
 
 installDevHooks();
 
-// ===== STATIC UI DATA =====
+// ============================================================================
+// STATIC UI + CONTENT PRIMITIVES
+// Responsibility: screen constants, glyph tables, codex static entries, and
+// immutable lookup content consumed by rendering and systems.
+// Extract to: content/ui.js + content/glyphs.js + content/codex.js
+// ============================================================================
 const WIDTH = Math.floor(8 * 2.5);
 const HEIGHT = Math.floor(5 * 2.5);
 const SAVE_VERSION = 1;
@@ -332,7 +346,12 @@ const CODEX_LORE_ENTRIES = [
   }
 ];
 
-// ===== UTILITIES =====
+// ============================================================================
+// STATE NORMALIZATION + TOWN PROGRESSION + CORE UTILITIES
+// Responsibility: world bootstrap/migration, milestone progression, biome state,
+// and shared helpers used by systems and rendering.
+// Extract to: state/progression.js + state/persistence.js + utils/helpers.js
+// ============================================================================
 function createDefaultWorldState() {
   return {
     town: {
@@ -1211,6 +1230,12 @@ function renderPanelTitle(title) {
   return `<span class="codex-title">${left}${fill}${right}\n${getGlyph("ui", "sectionLeft")} ${title} ${getGlyph("ui", "sectionRight")}\n${bl}${fill}${br}</span>`;
 }
 
+// ============================================================================
+// UI COMPOSITION HELPERS
+// Responsibility: reusable panel/header/control/log rendering helpers and
+// shared UI formatting conventions.
+// Extract to: ui/helpers.js + ui/layout.js
+// ============================================================================
 // ===== UI CONSISTENCY RULES =====
 // 1) Left panel owns context/actions/lists and narrative progression for current screen.
 // 2) Right panel owns persistent HUD (vitals, combat, run state, equipment, concise hints).
@@ -1517,7 +1542,12 @@ function getOpenPosition() {
   return { x: 1, y: 1 };
 }
 
-// ===== ENEMY MOVEMENT AND CLASS COMBAT =====
+// ============================================================================
+// COMBAT ENGINE + ENEMY AI + CLASS SKILLS
+// Responsibility: combat math, enemy finite-state behavior, status effects,
+// class skills, and dungeon-turn combat consequences.
+// Extract to: systems/combat/ai.js + systems/combat/resolution.js + systems/combat/skills.js
+// ============================================================================
 
 function getEnemyStateIcon(state) {
   if (!state || !GLYPH_SET.states[state]) return null;
@@ -2123,7 +2153,11 @@ function runEnemyBehaviorTurn() {
   }
 }
 
-// ===== CONTENT REGISTRIES =====
+// ============================================================================
+// CONTENT REGISTRIES
+// Responsibility: immutable item/affix/material/recipe/enemy datasets.
+// Extract to: content/items.js + content/materials.js + content/recipes.js + content/enemies.js
+// ============================================================================
 const BASE_ITEMS = [
   { id: "dagger", name: "Dagger", type: "weapon", slot: "mainHand", part: null, hands: 1, subType: "blade", atk: 2, def: 0, hp: 0, crit: 1, dodge: 0, codexText: "A short blade favored for quick work in tight corridors." },
   { id: "sword", name: "Sword", type: "weapon", slot: "mainHand", part: null, hands: 1, subType: "blade", atk: 3, def: 0, hp: 0, crit: 0, dodge: 0, codexText: "A reliable hunter's sidearm with no wasted motion." },
@@ -2891,7 +2925,11 @@ const ENEMY_DEFS = {
   }
 };
 
-// ===== CODEX AND DISCOVERY =====
+// ============================================================================
+// CODEX + DISCOVERY REGISTRY
+// Responsibility: discovery tracking, codex projections, and codex row/detail rendering.
+// Extract to: systems/codex/registry.js + systems/codex/queries.js + ui/rendering/codex.js
+// ============================================================================
 function getEnemyLore(key, entry) {
   let table = ENEMY_DEFS[key]?.lore;
   if (!table) return "Unknown creature.";
@@ -3175,7 +3213,12 @@ function renderCodexEquipmentBar() {
   return `<span class="codex-meta">[\u2190\u2192] ${parts.join(" | ")}</span>`;
 }
 
-// ===== DUNGEON ENCOUNTERS, DROPS, AND GEAR =====
+// ============================================================================
+// DUNGEON ENCOUNTERS + LOOT + INVENTORY CONTENT FLOW
+// Responsibility: enemy pool/spawn/drop logic, consumables/materials handling,
+// and generated gear registration.
+// Extract to: systems/dungeon/spawning.js + systems/inventory/*
+// ============================================================================
 function getEnemyPool() {
   let biome = getActiveBiomeDef();
   return biome.enemyPool;
@@ -3727,7 +3770,11 @@ function generateItem(rarity) {
   };
 }
 
-// ===== PLAYER STATS AND PERSISTENCE =====
+// ============================================================================
+// PLAYER STATS + SAVE PERSISTENCE
+// Responsibility: runtime stat recompute, save slot IO, and load-time migration.
+// Extract to: state/stats.js + state/persistence.js
+// ============================================================================
 function getBaseMaxHp() {
   if (player.class === "witch") return 8;
   if (player.class === "orc") return 12;
@@ -3904,7 +3951,11 @@ function loadGame(slotIndex = 1) {
   return true;
 }
 
-// ===== WORLD FLOW =====
+// ============================================================================
+// WORLD FLOW ORCHESTRATION
+// Responsibility: mode transitions for town/start flow and cross-mode lifecycle hooks.
+// Extract to: systems/flow/worldFlow.js
+// ============================================================================
 function maybeLogScoutReport() {
   if (dungeon.floor <= 1) return;
   let biomeName = getActiveBiomeDef().name;
@@ -3976,7 +4027,11 @@ function startGame() {
 }
 
 
-// ===== MAP =====
+// ============================================================================
+// MAP GENERATION + ROOM SETUP
+// Responsibility: floor generation pipeline, spawn placement, and entry logging.
+// Extract to: systems/dungeon/generation.js + systems/dungeon/flow.js
+// ============================================================================
 function generateRoom() {
   entities = [];
   resetTownVisitBuyback();
@@ -4021,7 +4076,11 @@ function generateRoom() {
 }
 
 
-// ===== RENDERING =====
+// ============================================================================
+// MAIN RENDER ORCHESTRATOR
+// Responsibility: screen rendering per state and dungeon viewport drawing.
+// Extract to: ui/rendering/screens.js + ui/rendering/dungeon.js
+// ============================================================================
 function draw() {
   applyClassTheme();
 
@@ -4438,7 +4497,11 @@ ${renderScreenInstructions("town")}`;
   drawUI();
 }
 
-// ===== SIDE PANEL UI =====
+// ============================================================================
+// SIDE PANEL HUD RENDERING
+// Responsibility: right-panel vitals/combat/run/equipment summaries per mode.
+// Extract to: ui/rendering/hud.js
+// ============================================================================
 function drawUI() {
   if (state === "TOWN") {
     let biome = getActiveBiomeDef();
@@ -4519,7 +4582,11 @@ function drawUI() {
   uiEl.innerHTML = text;
 }
 
-// ===== EQUIPMENT MANAGEMENT =====
+// ============================================================================
+// EQUIPMENT MANAGEMENT
+// Responsibility: validate equip rules, slot swaps, and equipment side effects.
+// Extract to: systems/inventory/equipment.js
+// ============================================================================
 function equipItem(index, shouldLog = true) {
   let item = player.inventory[index];
   if (!item) return null;
@@ -4616,7 +4683,11 @@ function equipItem(index, shouldLog = true) {
   return action;
 }
 
-// ===== INPUT =====
+// ============================================================================
+// INPUT ROUTER + GAME MODE HANDLERS
+// Responsibility: keyboard routing, state transitions, and per-screen actions.
+// Extract to: input/keyboard.js + input/modes/*.js
+// ============================================================================
 document.addEventListener("keydown", (e) => {
 
   // ===== CODEX (global) =====
@@ -5218,6 +5289,10 @@ document.addEventListener("keydown", (e) => {
   draw();
 });
 
-// ===== START =====
+// ============================================================================
+// ENTRYPOINT STARTUP
+// Responsibility: initialize derived stats and render first frame.
+// Keep in main.js as composition root.
+// ============================================================================
 calculateStats();
 draw();
